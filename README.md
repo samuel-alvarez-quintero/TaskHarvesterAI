@@ -1,2 +1,68 @@
 # TaskHarvesterAI
-Motor local de IA que analiza emails y otros mensajes para extraer tareas accionables automáticamente, priorizarlas y gestionarlas desde una CLI simple. Funciona offline con Ollama, garantizando privacidad y control total.
+
+Motor local de IA para ingesta, procesamiento y extracción automática de tareas desde emails y adjuntos, operado mediante CLI.
+
+---
+
+## Características
+
+- Ingesta de emails vía IMAP
+- Sincronización inicial y incremental
+- Cola persistente con SQLite
+- Procesamiento por lotes
+- Extracción de texto desde:
+  - PDFs
+  - Imágenes (OCR)
+  - DOCX
+- Normalización de contenido
+- Extracción de tareas mediante IA
+- CLI para operación manual
+- Procesamiento local con Ollama
+
+---
+
+## Documentación
+
+- [Diagrama de flujo](./docs/flowchart.md)
+- [Especificación de requerimientos](./docs/SRS.md)
+
+---
+
+## Modelos soportados
+
+- Principal: llama3
+- Fallback: Qwen
+
+---
+
+## Flujo de procesamiento
+
+1. Ingesta IMAP (lotes)
+2. Filtros previos
+3. Persistencia en SQLite
+4. Worker procesa batch
+5. Extracción de adjuntos (OCR si aplica)
+6. Normalización
+7. LLM → tareas
+8. Persistencia final
+
+## Principios de diseño
+
+- Procesamiento desacoplado
+- Control de concurrencia
+- Backpressure
+- LLM solo sobre texto limpio
+- Privacidad local
+
+## Limitaciones actuales
+
+- No soporte directo para WhatsApp
+- OCR limitado por calidad de imagen
+- Dependencia de calidad del prompt
+
+## Roadmap
+
+- Soporte multi-cuenta
+- Dataset para fine-tuning
+- Mejora de detección de proyectos/clientes
+- Integración con API externa
