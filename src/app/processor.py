@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
-from app.db import get_conn
-from app.ollama_client import extract_tasks
+from src.app.db import get_conn
+from src.app.ollama_client import extract_tasks
 
 def process():
     conn = get_conn()

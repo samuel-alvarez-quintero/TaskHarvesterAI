@@ -28,6 +28,17 @@ Motor local de IA para ingesta, procesamiento y extracción automática de tarea
 
 ---
 
+## Instalación y ejecución
+
+1. Instala dependencias:
+  pip install -r requirements.txt
+2. Ejecuta ingesta de correos no leídos:
+  python -m scripts.fetch_emails
+3. Procesa mensajes en cola:
+  python scripts/process_messages.py
+
+---
+
 ## Modelos soportados
 
 - Principal: llama3

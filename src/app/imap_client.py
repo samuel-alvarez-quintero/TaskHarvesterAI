@@ -3,7 +3,7 @@ import email
 import os
 from dotenv import load_dotenv
 from datetime import datetime
-from app.db import get_conn
+from src.app.db import get_conn
 
 load_dotenv()
 

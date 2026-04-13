@@ -1,5 +1,5 @@
 import sys
-from app.db import get_conn
+from src.app.db import get_conn
 
 def list_tasks():
     conn = get_conn()
