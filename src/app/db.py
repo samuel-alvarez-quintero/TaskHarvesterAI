@@ -59,6 +59,7 @@ def init_db() -> None:
         id INTEGER PRIMARY KEY,
         name TEXT,
         name_slug TEXT,
+        status TEXT(20) DEFAULT 'pending',
         requested_on DATETIME,
         expected_delivery_date DATETIME,
         priority TEXT(20),
