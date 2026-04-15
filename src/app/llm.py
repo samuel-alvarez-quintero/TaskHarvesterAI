@@ -18,8 +18,11 @@ def get_llm() -> LLMClientInterface | None:
 
 def extract_tasks(text: str, msg_id: int) -> str | None:
     prompt = f"""
+        Responde en español.
+        No agregues texto fuera del JSON.
         Analiza el mensaje y devuelve JSON válido:
 
+        Respuesta JSON con esta estructura:
         {{
         "tasks": ["..."],
         "priority": "low|medium|high"

@@ -34,7 +34,6 @@ class OllamaClient(LLMClientInterface):
             r = requests.post(
                 f"{base_url}/api/generate",
                 json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-                timeout=60,
             )
             json_response = r.json()
         except (requests.RequestException, ValueError) as exc:
