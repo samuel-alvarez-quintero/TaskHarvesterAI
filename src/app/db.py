@@ -76,10 +76,10 @@ def init_db() -> None:
         status TEXT(20) DEFAULT 'pending',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME,
-        ai_log_id INTEGER,
         task_group_id INTEGER,
-        FOREIGN KEY (ai_log_id) REFERENCES ai_log(id),
+        ai_log_id INTEGER,
         FOREIGN KEY (task_group_id) REFERENCES task_groups(id)
+        FOREIGN KEY (ai_log_id) REFERENCES ai_log(id),
     )
     """)
 
