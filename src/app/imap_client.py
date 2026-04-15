@@ -53,12 +53,27 @@ def fetch_unseen() -> None:
                 )
 
             msg_date = msg.get("Date")
+
             if msg_date is not None:
                 received_on = datetime.strptime(
                     str(msg.get("Date")), "%a, %d %b %Y %H:%M:%S %z"
                 )
                 external_id = f"{num.decode()}-{msg.get('Message-ID', 'null')}-{received_on.timestamp()}"
 
+                # Check if the email has already been processed
+                c.execute(
+                    "SELECT id FROM messages WHERE external_id = ?", (external_id,)
+                )
+                existing_message = c.fetchone()
+
+                if existing_message:
+                    logger.info(
+                        "Email with external ID %s has already been processed.",
+                        external_id,
+                    )
+                    continue
+
+                # Insert the email into the database if it hasn't been processed
                 c.execute(
                     """
                     INSERT INTO messages (source, received_on, external_id, from_address, to_address, subject, content, created_at)
