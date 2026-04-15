@@ -33,27 +33,49 @@ class OpenAIClient(LLMClientInterface):
                 msg_id,
             ),
         )
+        ai_log_id = c.lastrowid
 
         conn.commit()
 
-        r = requests.post(
-            url=f"{base_url}/v1/responses",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-            },
-            json={
-                "model": OPENAI_MODEL,
-                "input": [
-                    {
-                        "role": "user",
-                        "content": json.dumps({"type": "input_text", "text": prompt}),
-                    }
-                ],
-            },
-        )
+        try:
+            r = requests.post(
+                url=f"{base_url}/v1/responses",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                },
+                json={
+                    "model": OPENAI_MODEL,
+                    "input": [
+                        {
+                            "role": "user",
+                            "content": json.dumps(
+                                {"type": "input_text", "text": prompt}
+                            ),
+                        }
+                    ],
+                },
+            )
 
-        json_response = r.json()
+            json_response = r.json()
+        except (requests.RequestException, ValueError) as exc:
+            c.execute(
+                "UPDATE ai_log SET status = ?, response = ?, updated_at = ? WHERE id = ?",
+                (
+                    "failed",
+                    str(exc),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    ai_log_id,
+                ),
+            )
+            conn.commit()
+            conn.close()
+            return {
+                "error": str(exc),
+                "details": None,
+                "response": "",
+                "ai_log_id": ai_log_id,
+            }
 
         status = json_response.get("status")
 
@@ -64,7 +86,7 @@ class OpenAIClient(LLMClientInterface):
                 status,
                 json.dumps(json_response),
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                c.lastrowid,
+                ai_log_id,
             ),
         )
         conn.commit()

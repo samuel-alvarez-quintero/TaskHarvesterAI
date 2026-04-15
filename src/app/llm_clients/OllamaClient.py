@@ -11,7 +11,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 
 
 class OllamaClient(LLMClientInterface):
-    def generate(self, prompt: str, msg_id: int) -> str:
+    def generate(self, prompt: str, msg_id: int) -> dict:
         base_url = clear_url(OLLAMA_URL)
 
         conn = get_conn()
@@ -19,7 +19,7 @@ class OllamaClient(LLMClientInterface):
 
         # Log the prompt before making the API call
         c.execute(
-            """INSERT INTO ai_log (provider, model, prompt, created_at, message_id) VALUES (?, ?, ?, ?, ?) RETURNING id""",
+            """INSERT INTO ai_log (provider, model, prompt, created_at, message_id) VALUES (?, ?, ?, ?, ?)""",
             (
                 "ollama",
                 OLLAMA_MODEL,
@@ -28,24 +28,45 @@ class OllamaClient(LLMClientInterface):
                 msg_id,
             ),
         )
+        ai_log_id = c.lastrowid
 
-        r = requests.post(
-            f"{base_url}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-        )
-
-        json_response = r.json()
+        try:
+            r = requests.post(
+                f"{base_url}/api/generate",
+                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+                timeout=60,
+            )
+            json_response = r.json()
+        except (requests.RequestException, ValueError) as exc:
+            c.execute(
+                "UPDATE ai_log SET status = ?, response = ?, updated_at = ? WHERE id = ?",
+                (
+                    "failed",
+                    str(exc),
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    ai_log_id,
+                ),
+            )
+            conn.commit()
+            conn.close()
+            return {
+                "error": str(exc),
+                "details": None,
+                "response": "",
+                "ai_log_id": ai_log_id,
+            }
 
         status = "completed" if json_response.get("done") else "failed"
+        response_text = json_response.get("response", "")
 
         c.execute(
             "UPDATE ai_log SET http_status = ?, status = ?, response = ?, updated_at = ? WHERE id = ?",
             (
                 r.status_code,
                 status,
-                json_response["response"],
+                response_text,
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                msg_id,
+                ai_log_id,
             ),
         )
         conn.commit()
@@ -55,15 +76,15 @@ class OllamaClient(LLMClientInterface):
             return {
                 "error": None,
                 "details": json_response,
-                "response": json_response["response"],
-                "ai_log_id": c.lastrowid,
+                "response": response_text,
+                "ai_log_id": ai_log_id,
             }
         else:
             return {
                 "error": f"API call failed with status: {status}",
                 "details": json_response,
                 "response": "",
-                "ai_log_id": c.lastrowid,
+                "ai_log_id": ai_log_id,
             }
 
     def get_llm_info(self) -> dict:

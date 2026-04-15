@@ -1,7 +1,6 @@
 import json
 from datetime import datetime
 import logging
-from math import e
 import os
 
 from src.app.db import get_conn
