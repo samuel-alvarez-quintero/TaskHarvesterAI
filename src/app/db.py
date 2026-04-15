@@ -47,6 +47,7 @@ def init_db() -> None:
     CREATE TABLE IF NOT EXISTS client (
         id INTEGER PRIMARY KEY,
         name TEXT,
+        name_slug TEXT,
         emails TEXT,
         phone_numbers TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -57,6 +58,7 @@ def init_db() -> None:
     CREATE TABLE IF NOT EXISTS task_groups (
         id INTEGER PRIMARY KEY,
         name TEXT,
+        name_slug TEXT,
         requested_on DATETIME,
         expected_delivery_date DATETIME,
         priority TEXT(20),
