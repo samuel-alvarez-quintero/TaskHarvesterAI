@@ -1,7 +1,6 @@
 import logging
 import os
 import sys
-from token import COMMA
 
 from dotenv import load_dotenv
 from app.db import get_conn, init_db
@@ -68,7 +67,7 @@ def process_emails() -> None:
 
 def main():
 
-    COMMAND_LIST_TEXT = """'list-all' to list all tasks \n'list-uncomplete' to list incomplete tasks \n'list-complete' to list completed tasks \n'complete <id>' to complete a task. \n'fetch-unseen' to fetch unseen emails \n'process' to process unprocessed emails"""
+    COMMAND_LIST_TEXT = """'list-all' to list all tasks \n'list-pending' to list pending tasks \n'list-completed' to list completed tasks \n'complete <id>' to complete a task. \n'fetch-unseen' to fetch unseen emails \n'process' to process unprocessed emails"""
 
     if len(sys.argv) < 2:
         logger.error(f"""\nPlease provide a command: \n{COMMAND_LIST_TEXT}""")
