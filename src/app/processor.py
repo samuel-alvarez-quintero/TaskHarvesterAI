@@ -13,7 +13,9 @@ def process() -> None:
     conn = get_conn()
     c = conn.cursor()
 
-    c.execute("SELECT id, content, from_address, subject FROM messages WHERE processed = 0")
+    c.execute(
+        "SELECT id, content, from_address, subject FROM messages WHERE processed = 0"
+    )
     rows = c.fetchall()
 
     for row in rows:
@@ -35,7 +37,12 @@ def process() -> None:
 
             data = json.loads(response)
 
-            logger.info("Extracted tasks for message ID: %s | From: %s | Subject: %s", msg_id, from_address, subject)
+            logger.info(
+                "Extracted tasks for message ID: %s | From: %s | Subject: %s",
+                msg_id,
+                from_address,
+                subject,
+            )
 
             for task in data.get("tasks", []):
                 c.execute(
@@ -54,7 +61,5 @@ def process() -> None:
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
             conn.rollback()
             logger.error("Error processing message %s: %s", msg_id, e)
-        except Exception as e:
-            conn.rollback()
-            logger.exception("Unexpected error processing message %s", msg_id)
+
     conn.close()
