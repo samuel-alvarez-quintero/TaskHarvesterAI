@@ -1,9 +1,12 @@
+import os
 import sqlite3
 
-DB_PATH = "data/tasks.db"
+DB_PATH = os.getenv("DB_PATH", "data/tasks.db")
+
 
 def get_conn():
     return sqlite3.connect(DB_PATH)
+
 
 def init_db():
     conn = get_conn()
@@ -21,13 +24,31 @@ def init_db():
     """)
 
     c.execute("""
+    CREATE TABLE IF NOT EXISTS ai_log (
+        id INTEGER PRIMARY KEY,
+        provider TEXT(50),
+        model TEXT(50),
+        http_status TEXT(5) DEFAULT '102',
+        status TEXT(20) DEFAULT 'pending',
+        prompt TEXT,
+        response TEXT,
+        created_at DATETIME,
+        updated_at DATETIME,
+        message_id INTEGER,
+        FOREIGN KEY (message_id) REFERENCES messages(id)
+    )
+    """)
+
+    c.execute("""
     CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY,
         content TEXT,
-        priority TEXT,
-        status TEXT DEFAULT 'pending',
+        priority TEXT(20),
+        status TEXT(20) DEFAULT 'pending',
         created_at DATETIME,
-        updated_at DATETIME
+        updated_at DATETIME,
+        ai_log_id INTEGER,
+        FOREIGN KEY (ai_log_id) REFERENCES ai_log(id)
     )
     """)
 
