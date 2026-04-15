@@ -1,12 +1,13 @@
 import logging
+from typing import Any
 
 import requests
 import os
 from datetime import datetime
 
-from src.app.db import get_conn
-from src.app.utility import clear_url
-from src.app.llm_clients.LLMClientInterface import LLMClientInterface
+from app.db import get_conn
+from app.utility import clear_url
+from app.llm_clients.LLMClientInterface import LLMClientInterface
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
@@ -15,7 +16,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 class OllamaClient(LLMClientInterface):
     _logger = logging.getLogger(__name__)
     
-    def generate(self, prompt: str, msg_id: int) -> dict:
+    def generate(self, prompt: str, msg_id: int) -> dict[str, Any]:
         base_url = clear_url(OLLAMA_URL)
 
         conn = get_conn()
@@ -28,7 +29,7 @@ class OllamaClient(LLMClientInterface):
                 "ollama",
                 OLLAMA_MODEL,
                 prompt,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                 msg_id,
             ),
         )
@@ -50,7 +51,7 @@ class OllamaClient(LLMClientInterface):
                 (
                     "failed",
                     str(exc),
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                     ai_log_id,
                 ),
             )
@@ -72,7 +73,7 @@ class OllamaClient(LLMClientInterface):
                 r.status_code,
                 status,
                 response_text,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                 ai_log_id,
             ),
         )
@@ -94,7 +95,7 @@ class OllamaClient(LLMClientInterface):
                 "ai_log_id": ai_log_id,
             }
 
-    def get_llm_info(self) -> dict:
+    def get_llm_info(self) -> dict[str, str]:
         return {
             "provider": "ollama",
             "url": OLLAMA_URL,

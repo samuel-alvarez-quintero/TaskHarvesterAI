@@ -4,11 +4,11 @@ import sqlite3
 DB_PATH = os.getenv("DB_PATH", "data/tasks.db")
 
 
-def get_conn():
+def get_conn() -> sqlite3.Connection:
     return sqlite3.connect(DB_PATH)
 
 
-def init_db():
+def init_db() -> None:
     conn = get_conn()
     c = conn.cursor()
 
@@ -16,13 +16,14 @@ def init_db():
     CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY,
         source TEXT,
+        received_on DATETIME,
         external_id TEXT,
         from_address TEXT,
         to_address TEXT,
         subject TEXT,
         content TEXT,
         processed INTEGER DEFAULT 0,
-        created_at DATETIME
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """)
 
@@ -35,7 +36,7 @@ def init_db():
         status TEXT(20) DEFAULT 'pending',
         prompt TEXT,
         response TEXT,
-        created_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME,
         message_id INTEGER,
         FOREIGN KEY (message_id) REFERENCES messages(id)
@@ -48,7 +49,7 @@ def init_db():
         content TEXT,
         priority TEXT(20),
         status TEXT(20) DEFAULT 'pending',
-        created_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME,
         ai_log_id INTEGER,
         FOREIGN KEY (ai_log_id) REFERENCES ai_log(id)

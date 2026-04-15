@@ -2,14 +2,14 @@ import json
 from datetime import datetime
 import logging
 
-from src.app.db import get_conn
-from src.app.llm import extract_tasks
+from app.db import get_conn
+from app.llm import extract_tasks
 
 
 logger = logging.getLogger(__name__)
 
 
-def process():
+def process() -> None:
     conn = get_conn()
     c = conn.cursor()
 
@@ -19,10 +19,21 @@ def process():
     for row in rows:
         msg_id, content, from_address, subject = row
 
-        result = extract_tasks(content, msg_id)
+        try:
+            result = extract_tasks(content, msg_id)
 
-        if len(result.get("response", "")) > 0:
-            data = json.loads(result["response"])
+            if not result:
+                logger.warning("No result returned for message ID: %s", msg_id)
+                continue
+
+            response = result.get("response", "")
+            if len(response) == 0:
+                logger.info("No tasks extracted for message ID: %s", msg_id)
+                c.execute("UPDATE messages SET processed = 1 WHERE id = ?", (msg_id,))
+                conn.commit()
+                continue
+
+            data = json.loads(response)
 
             logger.info("Extracted tasks for message ID: %s | From: %s | Subject: %s", msg_id, from_address, subject)
 
@@ -32,12 +43,18 @@ def process():
                     (
                         task,
                         data.get("priority"),
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
+                        datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                         result.get("ai_log_id"),
                     ),
                 )
 
             c.execute("UPDATE messages SET processed = 1 WHERE id = ?", (msg_id,))
-    conn.commit()
+            conn.commit()
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+            conn.rollback()
+            logger.error("Error processing message %s: %s", msg_id, e)
+        except Exception as e:
+            conn.rollback()
+            logger.exception("Unexpected error processing message %s", msg_id)
     conn.close()

@@ -1,12 +1,13 @@
 import json
 import logging
+from typing import Any
 import requests
 import os
 from datetime import datetime
 
-from src.app.db import get_conn
-from src.app.utility import clear_url
-from src.app.llm_clients.LLMClientInterface import LLMClientInterface
+from app.db import get_conn
+from app.utility import clear_url
+from app.llm_clients.LLMClientInterface import LLMClientInterface
 
 OPENAI_URL = os.getenv("OPENAI_URL", "https://api.openai.com")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-nano")
@@ -16,7 +17,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", False)
 class OpenAIClient(LLMClientInterface):
     _logger = logging.getLogger(__name__)
     
-    def generate(self, prompt: str, msg_id: int) -> dict:
+    def generate(self, prompt: str, msg_id: int) -> dict[str, Any]:
         base_url = clear_url(OPENAI_URL)
 
         if not OPENAI_API_KEY:
@@ -32,7 +33,7 @@ class OpenAIClient(LLMClientInterface):
                 "openai",
                 OPENAI_MODEL,
                 prompt,
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                 msg_id,
             ),
         )
@@ -68,7 +69,7 @@ class OpenAIClient(LLMClientInterface):
                 (
                     "failed",
                     str(exc),
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                     ai_log_id,
                 ),
             )
@@ -89,7 +90,7 @@ class OpenAIClient(LLMClientInterface):
                 r.status_code,
                 status,
                 json.dumps(json_response),
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                 ai_log_id,
             ),
         )
@@ -113,7 +114,7 @@ class OpenAIClient(LLMClientInterface):
                 "ai_log_id": ai_log_id,
             }
 
-    def get_llm_info(self) -> dict:
+    def get_llm_info(self) -> dict[str, str]:
         return {
             "provider": "openai",
             "url": OPENAI_URL,

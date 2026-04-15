@@ -1,6 +1,12 @@
+from abc import abstractmethod
+from typing import Any
+
+
 class LLMClientInterface:
-    def generate(self, prompt: str, msg_id: int) -> dict:
+    @abstractmethod
+    def generate(self, prompt: str, msg_id: int) -> dict[str, Any]:
         pass
 
-    def get_llm_info(self) -> dict:
+    @abstractmethod
+    def get_llm_info(self) -> dict[str, str]:
         pass

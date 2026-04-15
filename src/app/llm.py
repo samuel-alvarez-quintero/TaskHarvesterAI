@@ -1,12 +1,15 @@
 import logging
 import os
-from src.app.llm_clients.OllamaClient import OllamaClient
-from src.app.llm_clients.OpenAIClient import OpenAIClient
-from src.app.llm_clients.LLMClientInterface import LLMClientInterface
+from typing import Any
+
+from app.llm_clients.OllamaClient import OllamaClient
+from app.llm_clients.OpenAIClient import OpenAIClient
+from app.llm_clients.LLMClientInterface import LLMClientInterface
 
 logger = logging.getLogger(__name__)
 
-def get_llm() -> LLMClientInterface | None:
+
+def get_llm() -> LLMClientInterface:
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
     logger.info(f"Using LLM provider: {LLM_PROVIDER}")
 
@@ -19,7 +22,7 @@ def get_llm() -> LLMClientInterface | None:
             raise ValueError("LLM not supported")
 
 
-def extract_tasks(text: str, msg_id: int) -> str | None:
+def extract_tasks(text: str, msg_id: int) -> dict[str, Any] | None:
     prompt = f"""
         Responde en español.
         No agregues texto fuera del JSON.
@@ -36,9 +39,13 @@ def extract_tasks(text: str, msg_id: int) -> str | None:
         """
 
     try:
-        res = get_llm().generate(prompt, msg_id)
+        if get_llm() is not None:
+            res = get_llm().generate(prompt, msg_id)
 
-        return res
+            return res
+        else:
+            logger.error("No LLM client available.")
+            return None
     except ValueError as e:
-        print(f"Error: {e}")
+        logger.error(f"Error extracting tasks: {e}")
         return None
