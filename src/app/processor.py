@@ -1,14 +1,11 @@
 import json
 from datetime import datetime
 import logging
-import os
 
 from src.app.db import get_conn
 from src.app.llm import extract_tasks
-from src.app.logging_config import setup_logging
 
 
-setup_logging(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 
 
@@ -16,18 +13,18 @@ def process():
     conn = get_conn()
     c = conn.cursor()
 
-    c.execute("SELECT id, content FROM messages WHERE processed = 0")
+    c.execute("SELECT id, content, from_address, subject FROM messages WHERE processed = 0")
     rows = c.fetchall()
 
     for row in rows:
-        msg_id, content = row
+        msg_id, content, from_address, subject = row
 
         result = extract_tasks(content, msg_id)
 
         if len(result.get("response", "")) > 0:
             data = json.loads(result["response"])
 
-            # logger.info("Extracted tasks for message %s: %s", msg_id, result)
+            logger.info("Extracted tasks for message ID: %s | From: %s | Subject: %s", msg_id, from_address, subject)
 
             for task in data.get("tasks", []):
                 c.execute(

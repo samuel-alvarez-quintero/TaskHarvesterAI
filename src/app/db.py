@@ -17,6 +17,9 @@ def init_db():
         id INTEGER PRIMARY KEY,
         source TEXT,
         external_id TEXT,
+        from_address TEXT,
+        to_address TEXT,
+        subject TEXT,
         content TEXT,
         processed INTEGER DEFAULT 0,
         created_at DATETIME

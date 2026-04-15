@@ -30,10 +30,10 @@ def fetch_unseen():
 
         c.execute(
             """
-        INSERT INTO messages (source, external_id, content, created_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO messages (source, external_id, from_address, to_address, subject, content, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-            ("email", num.decode(), content, datetime.now()),
+            ("email", num.decode(), msg.get("From"), msg.get("To"), msg.get("Subject"), content, datetime.now()),
         )
 
     conn.commit()

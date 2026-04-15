@@ -1,4 +1,6 @@
+import os
 import sys
+
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -10,5 +12,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 if __name__ == "__main__":
     from src.app.processor import process
+    from src.app.logging_config import setup_logging
+
+    setup_logging(level=os.getenv("LOG_LEVEL", "INFO"))
 
     process()

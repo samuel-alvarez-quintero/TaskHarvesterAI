@@ -1,4 +1,5 @@
 import json
+import logging
 import requests
 import os
 from datetime import datetime
@@ -13,6 +14,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", False)
 
 
 class OpenAIClient(LLMClientInterface):
+    _logger = logging.getLogger(__name__)
+    
     def generate(self, prompt: str, msg_id: int) -> dict:
         base_url = clear_url(OPENAI_URL)
 
@@ -36,6 +39,7 @@ class OpenAIClient(LLMClientInterface):
         ai_log_id = c.lastrowid
 
         conn.commit()
+        self._logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
 
         try:
             r = requests.post(
@@ -99,14 +103,14 @@ class OpenAIClient(LLMClientInterface):
                 "response": json_response.get("output", [{}])[0]
                 .get("content", [{}])[0]
                 .get("text", ""),
-                "ai_log_id": c.lastrowid,
+                "ai_log_id": ai_log_id,
             }
         else:
             return {
                 "error": f"API call failed with status: {status}",
                 "details": json_response,
                 "response": "",
-                "ai_log_id": c.lastrowid,
+                "ai_log_id": ai_log_id,
             }
 
     def get_llm_info(self) -> dict:

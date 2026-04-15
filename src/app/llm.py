@@ -1,11 +1,14 @@
+import logging
 import os
 from src.app.llm_clients.OllamaClient import OllamaClient
 from src.app.llm_clients.OpenAIClient import OpenAIClient
 from src.app.llm_clients.LLMClientInterface import LLMClientInterface
 
+logger = logging.getLogger(__name__)
+
 def get_llm() -> LLMClientInterface | None:
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
-    print(f"Using LLM provider: {LLM_PROVIDER}")
+    logger.info(f"Using LLM provider: {LLM_PROVIDER}")
 
     match LLM_PROVIDER:
         case "openai":

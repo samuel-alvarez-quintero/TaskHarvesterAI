@@ -1,3 +1,5 @@
+import logging
+
 import requests
 import os
 from datetime import datetime
@@ -11,6 +13,8 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 
 
 class OllamaClient(LLMClientInterface):
+    _logger = logging.getLogger(__name__)
+    
     def generate(self, prompt: str, msg_id: int) -> dict:
         base_url = clear_url(OLLAMA_URL)
 
@@ -29,6 +33,10 @@ class OllamaClient(LLMClientInterface):
             ),
         )
         ai_log_id = c.lastrowid
+
+        conn.commit()
+
+        self._logger.info(f"Using Ollama model: {OLLAMA_MODEL}")
 
         try:
             r = requests.post(
