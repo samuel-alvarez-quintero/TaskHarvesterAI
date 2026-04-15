@@ -40,7 +40,7 @@ def list_completed_tasks() -> None:
     c = conn.cursor()
 
     for row in c.execute(
-        "SELECT id, content, priority FROM tasks WHERE status = 'done'"
+        "SELECT id, content, priority FROM tasks WHERE status = 'completed'"
     ):
         print(f"ID: {row[0]}, Content: {row[1]}, Priority: {row[2]}")
 
@@ -51,7 +51,7 @@ def complete(task_id: int) -> None:
     conn = get_conn()
     c = conn.cursor()
 
-    c.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (task_id,))
+    c.execute("UPDATE tasks SET status = 'completed' WHERE id = ?", (task_id,))
     conn.commit()
     conn.close()
 
