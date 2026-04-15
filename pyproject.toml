@@ -32,6 +32,6 @@ dev = [
 ]
 
 [tool.mypy]
-python_version = ">=3.13"
+python_version = "3.13"
 strict = true
 ignore_missing_imports = true

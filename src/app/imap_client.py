@@ -52,27 +52,29 @@ def fetch_unseen() -> None:
                     errors="ignore"
                 )
 
-            received_on = datetime.strptime(msg.get("Date"), "%a, %d %b %Y %H:%M:%S %z")
-            external_id = (
-                f"{num.decode()}-{msg.get('Message-ID', 'null')}-{received_on.timestamp()}"
-            )
+            msg_date = msg.get("Date")
+            if msg_date is not None:
+                received_on = datetime.strptime(
+                    str(msg.get("Date")), "%a, %d %b %Y %H:%M:%S %z"
+                )
+                external_id = f"{num.decode()}-{msg.get('Message-ID', 'null')}-{received_on.timestamp()}"
 
-            c.execute(
-                """
-                INSERT INTO messages (source, received_on, external_id, from_address, to_address, subject, content, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "email",
-                    received_on.astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
-                    external_id,
-                    msg.get("From"),
-                    msg.get("To"),
-                    msg.get("Subject"),
-                    content,
-                    datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
-                ),
-            )
+                c.execute(
+                    """
+                    INSERT INTO messages (source, received_on, external_id, from_address, to_address, subject, content, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "email",
+                        received_on.astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
+                        external_id,
+                        msg.get("From"),
+                        msg.get("To"),
+                        msg.get("Subject"),
+                        content,
+                        datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
+                    ),
+                )
 
     conn.commit()
     conn.close()

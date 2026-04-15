@@ -65,8 +65,7 @@ def process_emails() -> None:
     process()
 
 
-def main():
-
+def main() -> None:
     COMMAND_LIST_TEXT = """'list-all' to list all tasks \n'list-pending' to list pending tasks \n'list-completed' to list completed tasks \n'complete <id>' to complete a task. \n'fetch-unseen' to fetch unseen emails \n'process' to process unprocessed emails"""
 
     if len(sys.argv) < 2:
