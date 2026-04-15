@@ -30,10 +30,66 @@ def extract_tasks(text: str, msg_id: int) -> dict[str, Any] | None:
 
         Respuesta JSON con esta estructura:
         {{
-        "tasks": ["..."],
-        "priority": "low|medium|high"
+            "task_group_info": {{
+                "name": "...",
+                "name_slug": "...",
+                "requested_on": "%Y-%m-%d %H:%M:%S%z",
+                "expected_delivery_date": "%Y-%m-%d %H:%M:%S%z or null",
+                "priority": "low|medium|high"
+                "status": "pending|in_progress|completed"
+            }},
+            "client_info": {{
+                "name": "...",
+                "name_slug": "...",
+                "emails": ["...", "..."],
+                "phone_numbers": ["...", "..."]
+            }},
+            "tasks": [
+                {{
+                    "content": "...",
+                    "requested_on": "%Y-%m-%d %H:%M:%S%z",
+                    "expected_delivery_date": "%Y-%m-%d %H:%M:%S%z or null",
+                    "priority": "low|medium|high"
+                    "status": "pending|in_progress|completed"
+                }},
+                ...
+            ]
         }}
 
+        Ejemplo de respuesta JSON:
+        {{
+            "task_group_info": {{
+                "name": "Tareas para proyecto X",
+                "name_slug": "tareas-para-proyecto-x",
+                "requested_on": "2024-06-01 10:00:00+0000",
+                "expected_delivery_date": "2024-06-10 18:00:00+0000",
+                "priority": "high",
+                "status": "pending"
+            }},
+            "client_info": {{
+                "name": "Empresa ABC",
+                "name_slug": "empresa-abc",
+                "emails": ["example@empresa-abc.com", "Gerencia <gerencia@empresa-abc.com>"],
+                "phone_numbers": ["+1234567890"]
+            }},
+            "tasks": [
+                {{
+                    "content": "Investigar sobre el mercado objetivo para el proyecto X.",
+                    "requested_on": "2024-06-01 10:00:00+0000",
+                    "expected_delivery_date": "2024-06-05 18:00:00+0000",
+                    "priority": "high",
+                    "status": "pending"
+                }},
+                {{
+                    "content": "Desarrollar un plan de marketing para el proyecto X.",
+                    "requested_on": "2024-06-01 10:00:00+0000",
+                    "expected_delivery_date": "2024-06-10 18:00:00+0000",
+                    "priority": "medium",
+                    "status": "pending"
+                }}
+            ]
+        }}
+        
         Mensaje:
         {text}
         """
