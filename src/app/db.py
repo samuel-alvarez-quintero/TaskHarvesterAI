@@ -44,15 +44,42 @@ def init_db() -> None:
     """)
 
     c.execute("""
+    CREATE TABLE IF NOT EXISTS client (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        emails TEXT,
+        phone_numbers TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS task_groups (
+        id INTEGER PRIMARY KEY,
+        name TEXT,
+        requested_on DATETIME,
+        expected_delivery_date DATETIME,
+        priority TEXT(20),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        client_id INTEGER,
+        FOREIGN KEY (client_id) REFERENCES client(id)
+    )
+    """)
+
+    c.execute("""
     CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY,
-        content TEXT,
+        requested_on DATETIME,
+        expected_delivery_date DATETIME,
         priority TEXT(20),
+        content TEXT,
         status TEXT(20) DEFAULT 'pending',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME,
         ai_log_id INTEGER,
-        FOREIGN KEY (ai_log_id) REFERENCES ai_log(id)
+        task_group_id INTEGER,
+        FOREIGN KEY (ai_log_id) REFERENCES ai_log(id),
+        FOREIGN KEY (task_group_id) REFERENCES task_groups(id)
     )
     """)
 
