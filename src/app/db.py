@@ -78,8 +78,8 @@ def init_db() -> None:
         updated_at DATETIME,
         task_group_id INTEGER,
         ai_log_id INTEGER,
-        FOREIGN KEY (task_group_id) REFERENCES task_groups(id)
-        FOREIGN KEY (ai_log_id) REFERENCES ai_log(id),
+        FOREIGN KEY (task_group_id) REFERENCES task_groups(id),
+        FOREIGN KEY (ai_log_id) REFERENCES ai_log(id)
     )
     """)
 
