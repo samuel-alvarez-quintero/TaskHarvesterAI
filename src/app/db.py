@@ -48,6 +48,7 @@ def init_db() -> None:
         id INTEGER PRIMARY KEY,
         name TEXT,
         name_slug TEXT,
+        status TEXT(20) DEFAULT 'active',
         emails TEXT,
         phone_numbers TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
