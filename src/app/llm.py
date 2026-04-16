@@ -151,7 +151,7 @@ def extract_tasks(
         """
 
     try:
-        return get_llm().generate(prompt, msg_id)
+        return get_llm().generate(prompt, msg_id, operation="extract_tasks")
     except ValueError as exc:
         logger.error("Error extracting tasks: %s", exc)
         return None

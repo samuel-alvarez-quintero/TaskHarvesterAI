@@ -12,6 +12,11 @@ from datetime import datetime
 from typing import cast
 
 from app.db.sqlite.database import get_conn
+from app.message_filter import (
+    DEFAULT_FILTER_KEYS,
+    classify_message,
+    save_message_filters,
+)
 
 """
 This module connects to an IMAP email server, fetches unseen emails from a specified mailbox, and processes each email to extract its content and metadata. 
@@ -198,7 +203,11 @@ def _parse_uid(fetch_response: bytes | str) -> str | None:
     return match.group(1)
 
 
-def fetch_unseen(limit: int | None = None) -> dict[str, int]:
+def fetch_unseen(
+    limit: int | None = None,
+    filter_messages: bool = False,
+    filter_keys: list[str] | None = None,
+) -> dict[str, int]:
     """Connects to the IMAP server, fetches unseen emails from the specified mailbox, and stores their content and metadata in the database."""
 
     summary = {
@@ -207,6 +216,8 @@ def fetch_unseen(limit: int | None = None) -> dict[str, int]:
         "duplicates": 0,
         "fetch_errors": 0,
         "invalid_payloads": 0,
+        "filtered": 0,
+        "filter_errors": 0,
     }
 
     if not all([IMAP_HOST, IMAP_USER, IMAP_PASS]):
@@ -276,6 +287,7 @@ def fetch_unseen(limit: int | None = None) -> dict[str, int]:
                         """,
                         (account_id, mailbox, imap_uid),
                     )
+                conn.commit()
 
                 existing_message = c.fetchone()
                 if existing_message:
@@ -458,6 +470,26 @@ def fetch_unseen(limit: int | None = None) -> dict[str, int]:
                         ),
                     )
                 summary["fetched"] += 1
+
+                conn.commit()
+
+                if filter_messages and message_row_id is not None:
+                    selected_filters = filter_keys or DEFAULT_FILTER_KEYS
+                    classification = classify_message(
+                        message_row_id,
+                        from_email or "",
+                        subject or "",
+                        body_text_clean or body_text_raw or body_html_raw or "",
+                        selected_filters,
+                    )
+                    if classification is None:
+                        summary["filter_errors"] += 1
+                    else:
+                        save_message_filters(
+                            message_row_id,
+                            classification["filters"],
+                        )
+                        summary["filtered"] += 1
 
             conn.commit()
     finally:

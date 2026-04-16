@@ -4,7 +4,7 @@ from typing import Any
 
 class LLMClientInterface:
     @abstractmethod
-    def generate(self, prompt: str, msg_id: int) -> dict[str, Any]:
+    def generate(self, prompt: str, msg_id: int, operation: str = "extract_tasks") -> dict[str, Any]:
         pass
 
     @abstractmethod

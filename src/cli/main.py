@@ -9,6 +9,7 @@ from rich.table import Table
 from app.db.sqlite.database import get_conn, init_db
 from app.imap_client import fetch_unseen
 from app.logging_config import setup_logging
+from app.message_filter import FILTER_DEFINITIONS, filter_messages
 from app.processor import process
 
 load_dotenv()
@@ -125,10 +126,31 @@ def print_status() -> None:
     console.print(overview_table)
 
 
-def run_fetch(limit: int | None) -> int:
-    summary = fetch_unseen(limit=limit)
+def _get_selected_filters(args: argparse.Namespace) -> list[str]:
+    selected_filters = [
+        key for key in FILTER_DEFINITIONS if getattr(args, key, False)
+    ]
+    return selected_filters or list(FILTER_DEFINITIONS)
+
+
+def run_fetch(
+    limit: int | None,
+    filter_enabled: bool,
+    filter_keys: list[str] | None = None,
+) -> int:
+    summary = fetch_unseen(
+        limit=limit,
+        filter_messages=filter_enabled,
+        filter_keys=filter_keys,
+    )
     _print_summary("Fetch summary", summary)
     return 0
+
+
+def run_filter(filter_keys: list[str] | None, limit: int | None) -> int:
+    summary = filter_messages(filter_keys=filter_keys, limit=limit)
+    _print_summary("Filter summary", summary)
+    return 1 if summary["errors"] > 0 else 0
 
 
 def run_process(
@@ -166,6 +188,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     fetch_parser = subparsers.add_parser("fetch", help="Fetch unseen emails")
     fetch_parser.add_argument("--limit", type=int, default=None)
+    fetch_parser.add_argument("--filter", action="store_true", help="Run AI filters on newly fetched emails")
+    for filter_name, filter_info in FILTER_DEFINITIONS.items():
+        fetch_parser.add_argument(
+            f"--{filter_name}",
+            action="store_true",
+            help=filter_info["description"],
+        )
 
     process_parser = subparsers.add_parser("process", help="Process queued messages")
     process_parser.add_argument("--limit", type=int, default=None)
@@ -194,6 +223,15 @@ def build_parser() -> argparse.ArgumentParser:
     complete_parser = task_subparsers.add_parser("complete", help="Mark a task as completed")
     complete_parser.add_argument("task_id", type=int)
 
+    filter_parser = subparsers.add_parser("filter", help="Run AI filters on existing messages")
+    filter_parser.add_argument("--limit", type=int, default=None)
+    for filter_name, filter_info in FILTER_DEFINITIONS.items():
+        filter_parser.add_argument(
+            f"--{filter_name}",
+            action="store_true",
+            help=filter_info["description"],
+        )
+
     subparsers.add_parser("init-db", help="Initialize the database schema")
 
     return parser
@@ -209,12 +247,22 @@ def main() -> None:
 
     match args.command:
         case "fetch":
-            exit_code = run_fetch(limit=args.limit)
+            filter_keys = _get_selected_filters(args) if args.filter else None
+            exit_code = run_fetch(
+                limit=args.limit,
+                filter_enabled=args.filter,
+                filter_keys=filter_keys,
+            )
         case "process":
             exit_code = run_process(
                 limit=args.limit,
                 retry_errors=args.retry_errors,
                 retry_processing_after_minutes=args.retry_processing_after_minutes,
+            )
+        case "filter":
+            exit_code = run_filter(
+                filter_keys=_get_selected_filters(args),
+                limit=args.limit,
             )
         case "run":
             exit_code = run_pipeline(args)

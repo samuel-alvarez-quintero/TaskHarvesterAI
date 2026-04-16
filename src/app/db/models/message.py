@@ -5,6 +5,7 @@ from sqlalchemy import DateTime, Integer, String, Text, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.models.message_filter import MessageFilter
 
 if TYPE_CHECKING:
     from app.db.models.ai_log import AiLog
@@ -93,6 +94,7 @@ class Message(Base):
         back_populates="source_message"
     )
     source_tasks: Mapped[list["Task"]] = relationship(back_populates="source_message")
+    filters: Mapped[list["MessageFilter"]] = relationship(back_populates="message")
 
     __table_args__ = (
         Index(

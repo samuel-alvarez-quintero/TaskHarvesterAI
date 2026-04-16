@@ -100,6 +100,27 @@ CREATE INDEX IF NOT EXISTS idx_message_addresses_role ON message_addresses (addr
 
 --
 --
+-- This table stores classification and filter tags for each message. It is designed to support multiple filters and future extensions without altering the messages table.
+CREATE TABLE
+    IF NOT EXISTS message_filters (
+        id INTEGER PRIMARY KEY,
+        message_row_id INTEGER NOT NULL,
+        filter_name TEXT NOT NULL,
+        filter_value INTEGER NOT NULL DEFAULT 0,
+        confidence REAL,
+        reason TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME,
+        FOREIGN KEY (message_row_id) REFERENCES messages (id) ON DELETE CASCADE,
+        UNIQUE (message_row_id, filter_name)
+    );
+
+CREATE INDEX IF NOT EXISTS idx_message_filters_message_row_id ON message_filters (message_row_id);
+
+CREATE INDEX IF NOT EXISTS idx_message_filters_filter_name ON message_filters (filter_name);
+
+--
+--
 -- This table stores metadata about each attachment associated with a message, including MIME information, size, and optional local storage paths. 
 -- It also includes fields for tracking the status of content extraction (e.g., text extraction from PDFs or OCR results) and any errors encountered during processing. 
 -- This allows the system to manage attachments effectively and link them to the relevant messages and tasks.

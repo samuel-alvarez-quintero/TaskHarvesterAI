@@ -17,7 +17,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", False)
 class OpenAIClient(LLMClientInterface):
     _logger = logging.getLogger(__name__)
 
-    def generate(self, prompt: str, msg_id: int) -> dict[str, Any]:
+    def generate(self, prompt: str, msg_id: int, operation: str = "extract_tasks") -> dict[str, Any]:
         base_url = clear_url(OPENAI_URL)
 
         if not OPENAI_API_KEY:
@@ -41,7 +41,7 @@ class OpenAIClient(LLMClientInterface):
             (
                 "openai",
                 OPENAI_MODEL,
-                "extract_tasks",
+                operation,
                 prompt,
                 datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                 msg_id,

@@ -17,7 +17,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 class OllamaClient(LLMClientInterface):
     _logger = logging.getLogger(__name__)
 
-    def generate(self, prompt: str, msg_id: int) -> dict[str, Any]:
+    def generate(self, prompt: str, msg_id: int, operation: str = "extract_tasks") -> dict[str, Any]:
         base_url = clear_url(OLLAMA_URL)
 
         conn = get_conn()
@@ -38,7 +38,7 @@ class OllamaClient(LLMClientInterface):
             (
                 "ollama",
                 OLLAMA_MODEL,
-                "extract_tasks",
+                operation,
                 prompt,
                 datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                 msg_id,
