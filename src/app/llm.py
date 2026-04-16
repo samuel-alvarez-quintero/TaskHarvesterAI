@@ -31,7 +31,7 @@ def extract_tasks(
     c = conn.cursor()
 
     # Search for existing tasks, task_groups and clients in the current context to avoid duplicates
-    current_context_json = {"clients": {}}
+    current_context_json: dict[str, Any] = {"clients": {}}
 
     # Search all clients
     c.execute("SELECT * FROM client")
