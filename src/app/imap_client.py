@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 from typing import cast
 
-from app.db import get_conn
+from app.db_schema import get_conn
 
 IMAP_HOST = os.getenv("IMAP_HOST", None)
 IMAP_USER = os.getenv("IMAP_USER", None)

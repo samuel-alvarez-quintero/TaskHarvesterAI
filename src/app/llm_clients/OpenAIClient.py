@@ -5,7 +5,7 @@ import requests
 import os
 from datetime import datetime
 
-from app.db import get_conn
+from app.db_schema import get_conn
 from app.utility import clear_url
 from app.llm_clients.LLMClientInterface import LLMClientInterface
 

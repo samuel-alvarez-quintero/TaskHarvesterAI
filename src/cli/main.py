@@ -3,7 +3,7 @@ import os
 import sys
 
 from dotenv import load_dotenv
-from app.db import get_conn, init_db
+from app.db_schema import get_conn, init_db
 from app.logging_config import setup_logging
 from app.imap_client import fetch_unseen
 from app.processor import process
