@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 import logging
+from operator import le
 
 from app.db.sqlite.database import get_conn
 from app.llm import extract_tasks
@@ -19,7 +20,7 @@ def process() -> None:
 
         c.execute(
             """
-            SELECT id, body_text_clean, body_text_raw, from_email, subject, received_on
+            SELECT id, body_text_clean, body_text_raw, body_html_raw, from_email, subject, received_on
             FROM messages
             WHERE status = 'pending'
             ORDER BY received_on DESC
@@ -28,12 +29,28 @@ def process() -> None:
         rows = c.fetchall()
 
         for row in rows:
-            msg_id, body_text_clean, body_text_raw, from_email, subject, received_on = (
+            msg_id, body_text_clean, body_text_raw, body_html_raw, from_email, subject, received_on = (
                 row
             )
-            message_text = body_text_clean or body_text_raw or ""
+            message_text = body_text_clean or body_text_raw or body_html_raw or ""
             sender = from_email or ""
             subject = subject or ""
+
+            if len(message_text) == 0:
+                logger.info("Skipping message ID %s due to empty content", msg_id)
+                c.execute(
+                    """
+                    UPDATE messages
+                    SET status = 'done',
+                        processed_at = ?,
+                        updated_at = ?,
+                        last_error = NULL
+                    WHERE id = ?
+                    """,
+                    (_now(), _now(), msg_id),
+                )
+                conn.commit()
+                continue
 
             try:
                 c.execute(

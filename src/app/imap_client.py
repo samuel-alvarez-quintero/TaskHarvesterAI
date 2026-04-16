@@ -9,6 +9,7 @@ import logging
 import os
 import re
 from datetime import datetime
+from typing import cast
 
 from app.db.sqlite.database import get_conn
 
@@ -25,6 +26,7 @@ IMAP_PASS = os.getenv("IMAP_PASS")
 IMAP_MAILBOX = os.getenv("IMAP_MAILBOX", "INBOX")
 
 logger = logging.getLogger(__name__)
+
 
 def _decode_mime_value(value: str | None) -> str:
     """Decodes MIME-encoded header values, handling multiple encoded parts and different character sets."""
@@ -72,7 +74,7 @@ def _extract_bodies(msg: Message) -> tuple[str, str]:
             return "", ""
 
         charset = msg.get_content_charset() or "utf-8"
-        decoded_payload = payload.decode(charset, errors="ignore")
+        decoded_payload = cast(bytes, payload).decode(charset, errors="ignore")
         if msg.get_content_type() == "text/html":
             return "", decoded_payload.strip()
         return decoded_payload.strip(), ""
@@ -86,7 +88,7 @@ def _extract_bodies(msg: Message) -> tuple[str, str]:
             continue
 
         charset = part.get_content_charset() or "utf-8"
-        decoded_payload = payload.decode(charset, errors="ignore")
+        decoded_payload = cast(bytes, payload).decode(charset, errors="ignore")
 
         if part.get_content_type() == "text/plain":
             text_parts.append(decoded_payload)
@@ -277,7 +279,7 @@ def fetch_unseen() -> None:
 
                 try:
                     message_date = (
-                        parsedate_to_datetime(msg.get("Date"))
+                        parsedate_to_datetime(str(msg.get("Date")))
                         if msg.get("Date")
                         else None
                     )
