@@ -1,8 +1,8 @@
 import json
 import logging
-import os
 from typing import Any
 
+from app.config import settings
 from app.db.sqlite.database import get_conn
 from app.llm_clients.OllamaClient import OllamaClient
 from app.llm_clients.OpenAIClient import OpenAIClient
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_llm() -> LLMClientInterface:
-    llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+    llm_provider = settings.llm_provider
     logger.info("Using LLM provider: %s", llm_provider)
 
     match llm_provider:

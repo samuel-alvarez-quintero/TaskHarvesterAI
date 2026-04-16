@@ -1,11 +1,12 @@
-import os
 from collections.abc import Generator
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/tasks.db")
+from app.config import settings
+
+DATABASE_URL = settings.database_url
 
 connect_args: dict[str, object] = {}
 if DATABASE_URL.startswith("sqlite"):

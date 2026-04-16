@@ -6,11 +6,11 @@ from email.utils import getaddresses, parsedate_to_datetime
 import imaplib
 import json
 import logging
-import os
 import re
 from datetime import datetime
 from typing import cast
 
+from app.config import settings
 from app.db.sqlite.database import get_conn
 from app.message_filter import (
     DEFAULT_FILTER_KEYS,
@@ -25,10 +25,10 @@ The module handles various email formats, including multipart messages with atta
 It also logs the processing of each email, including any errors encountered during fetching or parsing.
 """
 
-IMAP_HOST = os.getenv("IMAP_HOST")
-IMAP_USER = os.getenv("IMAP_USER")
-IMAP_PASS = os.getenv("IMAP_PASS")
-IMAP_MAILBOX = os.getenv("IMAP_MAILBOX", "INBOX")
+IMAP_HOST = settings.imap_host
+IMAP_USER = settings.imap_user
+IMAP_PASS = settings.imap_pass
+IMAP_MAILBOX = settings.imap_mailbox
 
 logger = logging.getLogger(__name__)
 

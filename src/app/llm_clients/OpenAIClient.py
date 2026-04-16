@@ -2,16 +2,16 @@ import json
 import logging
 from typing import Any
 import requests
-import os
 from datetime import datetime
 
+from app.config import settings
 from app.db.sqlite.database import get_conn
 from app.utility import clear_url
 from app.llm_clients.LLMClientInterface import LLMClientInterface
 
-OPENAI_URL = os.getenv("OPENAI_URL", "https://api.openai.com")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-nano")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", False)
+OPENAI_URL = settings.openai_url
+OPENAI_MODEL = settings.openai_model
+OPENAI_API_KEY = settings.openai_api_key
 
 
 class OpenAIClient(LLMClientInterface):

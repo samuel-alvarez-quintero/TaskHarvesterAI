@@ -3,15 +3,15 @@ import logging
 from typing import Any
 
 import requests
-import os
 from datetime import datetime
 
+from app.config import settings
 from app.db.sqlite.database import get_conn
 from app.utility import clear_url
 from app.llm_clients.LLMClientInterface import LLMClientInterface
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+OLLAMA_URL = settings.ollama_url
+OLLAMA_MODEL = settings.ollama_model
 
 
 class OllamaClient(LLMClientInterface):

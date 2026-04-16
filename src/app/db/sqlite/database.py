@@ -1,8 +1,9 @@
-import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(os.getenv("DB_PATH", "data/tasks.db"))
+from app.config import settings
+
+DB_PATH = Path(settings.db_path)
 SCHEMA_PATH = Path(__file__).with_name("tasks_schema.sql")
 
 

@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
+from app.config import settings
 from app.db.sqlite.database import get_conn, init_db
 from app.imap_client import fetch_unseen
 from app.logging_config import setup_logging
@@ -13,7 +14,7 @@ from app.message_filter import FILTER_DEFINITIONS, filter_messages
 from app.processor import process
 
 load_dotenv()
-setup_logging(level=os.getenv("LOG_LEVEL", "INFO"))
+setup_logging(level=settings.log_level)
 logger = logging.getLogger(__name__)
 console = Console()
 
