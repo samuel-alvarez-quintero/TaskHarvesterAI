@@ -18,10 +18,13 @@ dependencies = [
 
 [tool.poetry]
 package-mode = true
-packages = [{include = "app", from = "src"}]
+packages = [
+    {include = "app", from = "src"},
+    {include = "cli", from = "src"},
+]
 
 [tool.poetry.scripts]
-taskh = "src.cli.main:main"
+taskh = "cli.main:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

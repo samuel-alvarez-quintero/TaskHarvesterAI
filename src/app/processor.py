@@ -1,7 +1,7 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
-from operator import le
+from typing import Any
 
 from app.db.sqlite.database import get_conn
 from app.llm import extract_tasks
@@ -14,24 +14,66 @@ def _now() -> str:
     return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
 
 
-def process() -> None:
+def process(
+    limit: int | None = None,
+    retry_errors: bool = False,
+    retry_processing_after_minutes: int | None = None,
+) -> dict[str, int]:
+    summary = {
+        "selected": 0,
+        "processed": 0,
+        "skipped_empty": 0,
+        "no_result": 0,
+        "no_tasks": 0,
+        "clients_created": 0,
+        "task_groups_created": 0,
+        "tasks_created": 0,
+        "tasks_updated": 0,
+        "errors": 0,
+    }
+
+    status_filters = ["pending"]
+    if retry_errors:
+        status_filters.append("error")
+
+    where_clauses = [f"status IN ({', '.join('?' for _ in status_filters)})"]
+    params: list[Any] = list(status_filters)
+
+    if retry_processing_after_minutes is not None:
+        cutoff = datetime.now().astimezone() - timedelta(
+            minutes=retry_processing_after_minutes
+        )
+        where_clauses.append("(status != 'processing' OR last_attempt_at <= ?)")
+        params.append(cutoff.strftime("%Y-%m-%d %H:%M:%S%z"))
+    else:
+        where_clauses.append("status != 'processing'")
+
+    query = f"""
+        SELECT id, body_text_clean, body_text_raw, body_html_raw, from_email, subject, received_on
+        FROM messages
+        WHERE {' AND '.join(where_clauses)}
+        ORDER BY received_on DESC
+    """
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+
     with get_conn() as conn:
         c = conn.cursor()
-
-        c.execute(
-            """
-            SELECT id, body_text_clean, body_text_raw, body_html_raw, from_email, subject, received_on
-            FROM messages
-            WHERE status = 'pending'
-            ORDER BY received_on DESC
-            """
-        )
+        c.execute(query, tuple(params))
         rows = c.fetchall()
+        summary["selected"] = len(rows)
 
         for row in rows:
-            msg_id, body_text_clean, body_text_raw, body_html_raw, from_email, subject, received_on = (
-                row
-            )
+            (
+                msg_id,
+                body_text_clean,
+                body_text_raw,
+                body_html_raw,
+                from_email,
+                subject,
+                received_on,
+            ) = row
             message_text = body_text_clean or body_text_raw or body_html_raw or ""
             sender = from_email or ""
             subject = subject or ""
@@ -50,6 +92,8 @@ def process() -> None:
                     (_now(), _now(), msg_id),
                 )
                 conn.commit()
+                summary["skipped_empty"] += 1
+                summary["processed"] += 1
                 continue
 
             try:
@@ -78,6 +122,8 @@ def process() -> None:
                         ("No result returned by LLM extraction.", _now(), msg_id),
                     )
                     conn.commit()
+                    summary["no_result"] += 1
+                    summary["errors"] += 1
                     continue
 
                 response = result.get("response", "")
@@ -95,6 +141,8 @@ def process() -> None:
                         (_now(), _now(), msg_id),
                     )
                     conn.commit()
+                    summary["no_tasks"] += 1
+                    summary["processed"] += 1
                     continue
 
                 data_task = json.loads(response)
@@ -173,6 +221,7 @@ def process() -> None:
                             ),
                         )
                         client_id = c.lastrowid
+                        summary["clients_created"] += 1
 
                 task_group_info = data_task.get("task_group_info", {})
                 task_group_id = None
@@ -238,6 +287,7 @@ def process() -> None:
                             ),
                         )
                         task_group_id = c.lastrowid
+                        summary["task_groups_created"] += 1
 
                 for task in data_task.get("tasks", []):
                     task_content = task.get("content")
@@ -276,6 +326,7 @@ def process() -> None:
                                 existing_task[0],
                             ),
                         )
+                        summary["tasks_updated"] += 1
                         continue
 
                     c.execute(
@@ -307,6 +358,7 @@ def process() -> None:
                             _now(),
                         ),
                     )
+                    summary["tasks_created"] += 1
 
                 c.execute(
                     """
@@ -320,6 +372,7 @@ def process() -> None:
                     (_now(), _now(), msg_id),
                 )
                 conn.commit()
+                summary["processed"] += 1
             except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                 conn.rollback()
                 c.execute(
@@ -334,4 +387,7 @@ def process() -> None:
                     (str(exc), _now(), msg_id),
                 )
                 conn.commit()
+                summary["errors"] += 1
                 logger.error("Error processing message %s: %s", msg_id, exc)
+
+    return summary

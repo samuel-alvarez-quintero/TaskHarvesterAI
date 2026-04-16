@@ -198,12 +198,20 @@ def _parse_uid(fetch_response: bytes | str) -> str | None:
     return match.group(1)
 
 
-def fetch_unseen() -> None:
+def fetch_unseen(limit: int | None = None) -> dict[str, int]:
     """Connects to the IMAP server, fetches unseen emails from the specified mailbox, and stores their content and metadata in the database."""
+
+    summary = {
+        "selected": 0,
+        "fetched": 0,
+        "duplicates": 0,
+        "fetch_errors": 0,
+        "invalid_payloads": 0,
+    }
 
     if not all([IMAP_HOST, IMAP_USER, IMAP_PASS]):
         logger.warning("IMAP credentials are not fully set. Skipping email fetch.")
-        return
+        return summary
 
     mail = imaplib.IMAP4_SSL(str(IMAP_HOST))
 
@@ -214,17 +222,23 @@ def fetch_unseen() -> None:
         status, message_numbers = mail.search(None, "UNSEEN")
         if status != "OK":
             logger.error("IMAP search failed with status: %s", status)
-            return
+            return summary
+
+        candidate_numbers = message_numbers[0].split()
+        if limit is not None:
+            candidate_numbers = candidate_numbers[:limit]
+        summary["selected"] = len(candidate_numbers)
 
         with get_conn() as conn:
             c = conn.cursor()
 
-            for num in message_numbers[0].split():
+            for num in candidate_numbers:
                 fetch_status, msg_data = mail.fetch(
                     num, "(UID RFC822 FLAGS INTERNALDATE)"
                 )
                 if fetch_status != "OK":
                     logger.warning("Failed to fetch email number %s", num.decode())
+                    summary["fetch_errors"] += 1
                     continue
 
                 if (
@@ -237,6 +251,7 @@ def fetch_unseen() -> None:
                     logger.warning(
                         "Unexpected IMAP payload for email number %s", num.decode()
                     )
+                    summary["invalid_payloads"] += 1
                     continue
 
                 response_metadata = msg_data[0][0]
@@ -269,6 +284,7 @@ def fetch_unseen() -> None:
                         message_id,
                         imap_uid,
                     )
+                    summary["duplicates"] += 1
                     continue
 
                 body_text_raw, body_html_raw = _extract_bodies(msg)
@@ -441,5 +457,10 @@ def fetch_unseen() -> None:
                             "pending",
                         ),
                     )
+                summary["fetched"] += 1
+
+            conn.commit()
     finally:
         mail.logout()
+
+    return summary
