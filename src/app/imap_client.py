@@ -1,3 +1,4 @@
+from email.header import decode_header
 import imaplib
 import email
 import logging
@@ -73,6 +74,26 @@ def fetch_unseen() -> None:
                     )
                     continue
 
+                msg_from = msg.get("From", "")
+                msg_from_decoded = decode_header(msg_from)
+                msg_from = msg_from_decoded[0][0]
+                if isinstance(msg_from, bytes):
+                    msg_from = msg_from.decode(msg_from_decoded[0][1] or "utf-8")
+
+                msg_to = msg.get("To", "")
+                msg_to_decoded = decode_header(msg_to)
+                msg_to = msg_to_decoded[0][0]
+                if isinstance(msg_to, bytes):
+                    msg_to = msg_to.decode(msg_to_decoded[0][1] or "utf-8")
+
+                msg_subject = msg.get("Subject", "")
+                msg_subject_decoded = decode_header(msg_subject)
+                msg_subject = msg_subject_decoded[0][0]
+                if isinstance(msg_subject, bytes):
+                    msg_subject = msg_subject.decode(
+                        msg_subject_decoded[0][1] or "utf-8"
+                    )
+
                 # Insert the email into the database if it hasn't been processed
                 c.execute(
                     """
@@ -83,9 +104,9 @@ def fetch_unseen() -> None:
                         "email",
                         received_on.astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                         external_id,
-                        msg.get("From"),
-                        msg.get("To"),
-                        msg.get("Subject"),
+                        msg_from,
+                        msg_to,
+                        msg_subject,
                         content,
                         datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                     ),
