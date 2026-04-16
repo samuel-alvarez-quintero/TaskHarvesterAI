@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 
@@ -15,19 +16,29 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
 
 class OllamaClient(LLMClientInterface):
     _logger = logging.getLogger(__name__)
-    
+
     def generate(self, prompt: str, msg_id: int) -> dict[str, Any]:
         base_url = clear_url(OLLAMA_URL)
 
         conn = get_conn()
         c = conn.cursor()
 
-        # Log the prompt before making the API call
         c.execute(
-            """INSERT INTO ai_log (provider, model, prompt, created_at, message_id) VALUES (?, ?, ?, ?, ?)""",
+            """
+            INSERT INTO ai_log (
+                provider,
+                model,
+                operation,
+                prompt,
+                created_at,
+                message_row_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
             (
                 "ollama",
                 OLLAMA_MODEL,
+                "extract_tasks",
                 prompt,
                 datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                 msg_id,
@@ -43,11 +54,16 @@ class OllamaClient(LLMClientInterface):
             r = requests.post(
                 f"{base_url}/api/generate",
                 json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+                timeout=120,
             )
             json_response = r.json()
         except (requests.RequestException, ValueError) as exc:
             c.execute(
-                "UPDATE ai_log SET status = ?, response = ?, updated_at = ? WHERE id = ?",
+                """
+                UPDATE ai_log
+                SET status = ?, error_message = ?, updated_at = ?
+                WHERE id = ?
+                """,
                 (
                     "failed",
                     str(exc),
@@ -68,11 +84,20 @@ class OllamaClient(LLMClientInterface):
         response_text = json_response.get("response", "")
 
         c.execute(
-            "UPDATE ai_log SET http_status = ?, status = ?, response = ?, updated_at = ? WHERE id = ?",
+            """
+            UPDATE ai_log
+            SET http_status = ?,
+                status = ?,
+                response = ?,
+                response_payload = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
             (
                 r.status_code,
                 status,
                 response_text,
+                json.dumps(json_response),
                 datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                 ai_log_id,
             ),

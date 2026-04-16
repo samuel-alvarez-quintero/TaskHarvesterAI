@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_llm() -> LLMClientInterface:
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
-    logger.info(f"Using LLM provider: {LLM_PROVIDER}")
+    llm_provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+    logger.info("Using LLM provider: %s", llm_provider)
 
-    match LLM_PROVIDER:
+    match llm_provider:
         case "openai":
             return OpenAIClient()
         case "ollama":
@@ -27,64 +27,78 @@ def get_llm() -> LLMClientInterface:
 def extract_tasks(
     msg_id: int, msg_content: str, sender: str, subject: str
 ) -> dict[str, Any] | None:
-    conn = get_conn()
-    c = conn.cursor()
+    with get_conn() as conn:
+        c = conn.cursor()
 
-    # Search for existing tasks, task_groups and clients in the current context to avoid duplicates
-    current_context_json: dict[str, Any] = {"clients": {}}
+        current_context_json: dict[str, Any] = {"clients": {}}
 
-    # Search all clients
-    c.execute("SELECT * FROM client")
-    clients = c.fetchall()
-
-    for client in clients:
-        client_id = client[0]
-
-        current_context_json["clients"][client_id] = {
-            "name": client[1],
-            "name_slug": client[2],
-            "status": client[3],
-            "emails": client[4].split(",") if client[4] else [],
-            "phone_numbers": client[5].split(",") if client[5] else [],
-            "task_groups": {},
-        }
-
-        # Search all task groups for the client
         c.execute(
-            "SELECT * FROM task_groups WHERE client_id = ?",
-            (client_id,),
+            """
+            SELECT id, name, name_slug, status, primary_email, primary_phone, notes
+            FROM client
+            """
         )
-        task_groups = c.fetchall()
+        clients = c.fetchall()
 
-        for task_group in task_groups:
-            task_group_id = task_group[0]
-
-            current_context_json["clients"][client_id]["task_groups"][task_group_id] = {
-                "name": task_group[1],
-                "name_slug": task_group[2],
-                "status": task_group[3],
-                "requested_on": task_group[4],
-                "expected_delivery_date": task_group[5],
-                "priority": task_group[6],
-                "tasks": [],
+        for client in clients:
+            client_id = client[0]
+            current_context_json["clients"][client_id] = {
+                "name": client[1],
+                "name_slug": client[2],
+                "status": client[3],
+                "emails": [client[4]] if client[4] else [],
+                "phone_numbers": [client[5]] if client[5] else [],
+                "notes": client[6],
+                "task_groups": {},
             }
 
-            # Search all tasks for the task group
             c.execute(
-                "SELECT content FROM tasks WHERE task_group_id = ?",
-                (task_group_id,),
+                """
+                SELECT id, name, name_slug, status, requested_on, expected_delivery_date, priority
+                FROM task_groups
+                WHERE client_id = ?
+                """,
+                (client_id,),
             )
-            tasks = c.fetchall()
+            task_groups = c.fetchall()
 
-            # Add tasks to current context
-            for task in tasks:
+            for task_group in task_groups:
+                task_group_id = task_group[0]
                 current_context_json["clients"][client_id]["task_groups"][
                     task_group_id
-                ]["tasks"].append(task)
+                ] = {
+                    "name": task_group[1],
+                    "name_slug": task_group[2],
+                    "status": task_group[3],
+                    "requested_on": task_group[4],
+                    "expected_delivery_date": task_group[5],
+                    "priority": task_group[6],
+                    "tasks": [],
+                }
+
+                c.execute(
+                    """
+                    SELECT content, status, priority
+                    FROM tasks
+                    WHERE task_group_id = ?
+                    """,
+                    (task_group_id,),
+                )
+                tasks = c.fetchall()
+
+                for task in tasks:
+                    current_context_json["clients"][client_id]["task_groups"][
+                        task_group_id
+                    ]["tasks"].append(
+                        {
+                            "content": task[0],
+                            "status": task[1],
+                            "priority": task[2],
+                        }
+                    )
 
     current_context = json.dumps(current_context_json)
 
-    # Build the prompt with the current context and the new message
     prompt = f"""
         Responde en español.
         No agregues texto fuera del JSON.
@@ -103,7 +117,7 @@ def extract_tasks(
                 "name_slug": "...",
                 "requested_on": "%Y-%m-%d %H:%M:%S%z",
                 "expected_delivery_date": "%Y-%m-%d %H:%M:%S%z or null",
-                "priority": "low|medium|high"
+                "priority": "low|medium|high",
                 "status": "pending|in_progress|completed"
             }},
             "client_info": {{
@@ -117,43 +131,8 @@ def extract_tasks(
                     "content": "...",
                     "requested_on": "%Y-%m-%d %H:%M:%S%z",
                     "expected_delivery_date": "%Y-%m-%d %H:%M:%S%z or null",
-                    "priority": "low|medium|high"
+                    "priority": "low|medium|high",
                     "status": "pending|in_progress|completed"
-                }},
-                ...
-            ]
-        }}
-
-        Ejemplo de respuesta JSON:
-        {{
-            "task_group_info": {{
-                "name": "Tareas para proyecto X",
-                "name_slug": "tareas-para-proyecto-x",
-                "requested_on": "2024-06-01 10:00:00+0000",
-                "expected_delivery_date": "2024-06-10 18:00:00+0000",
-                "priority": "high",
-                "status": "pending"
-            }},
-            "client_info": {{
-                "name": "Empresa ABC",
-                "name_slug": "empresa-abc",
-                "emails": ["example@empresa-abc.com", "Gerencia <gerencia@empresa-abc.com>"],
-                "phone_numbers": ["+1234567890"]
-            }},
-            "tasks": [
-                {{
-                    "content": "Investigar sobre el mercado objetivo para el proyecto X.",
-                    "requested_on": "2024-06-01 10:00:00+0000",
-                    "expected_delivery_date": "2024-06-05 18:00:00+0000",
-                    "priority": "high",
-                    "status": "pending"
-                }},
-                {{
-                    "content": "Desarrollar un plan de marketing para el proyecto X.",
-                    "requested_on": "2024-06-01 10:00:00+0000",
-                    "expected_delivery_date": "2024-06-10 18:00:00+0000",
-                    "priority": "medium",
-                    "status": "pending"
                 }}
             ]
         }}
@@ -171,15 +150,8 @@ def extract_tasks(
         {msg_content}
         """
 
-    # Call the LLM to extract tasks
     try:
-        if get_llm() is not None:
-            res = get_llm().generate(prompt, msg_id)
-
-            return res
-        else:
-            logger.error("No LLM client available.")
-            return None
-    except ValueError as e:
-        logger.error(f"Error extracting tasks: {e}")
+        return get_llm().generate(prompt, msg_id)
+    except ValueError as exc:
+        logger.error("Error extracting tasks: %s", exc)
         return None
