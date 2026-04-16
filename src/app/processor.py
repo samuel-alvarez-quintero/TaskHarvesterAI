@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 import logging
 
-from app.db_schema import get_conn
+from app.db.sqlite.database import get_conn
 from app.llm import extract_tasks
 
 

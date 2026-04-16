@@ -3,7 +3,7 @@ import logging
 import os
 from typing import Any
 
-from app.db_schema import get_conn
+from app.db.sqlite.database import get_conn
 from app.llm_clients.OllamaClient import OllamaClient
 from app.llm_clients.OpenAIClient import OpenAIClient
 from app.llm_clients.LLMClientInterface import LLMClientInterface

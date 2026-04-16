@@ -1,117 +1,443 @@
 from email.header import decode_header
+from email.message import Message
+from email.parser import BytesParser
+from email.policy import default
+from email.utils import getaddresses, parsedate_to_datetime
 import imaplib
-import email
+import json
 import logging
 import os
+import re
 from datetime import datetime
-from typing import cast
 
-from app.db_schema import get_conn
+from app.db.sqlite.database import get_conn
 
-IMAP_HOST = os.getenv("IMAP_HOST", None)
-IMAP_USER = os.getenv("IMAP_USER", None)
-IMAP_PASS = os.getenv("IMAP_PASS", None)
+"""
+This module connects to an IMAP email server, fetches unseen emails from a specified mailbox, and processes each email to extract its content and metadata. 
+The extracted information is then stored in a SQLite database for further analysis and task extraction. 
+The module handles various email formats, including multipart messages with attachments, and decodes MIME-encoded headers to ensure accurate data extraction.
+It also logs the processing of each email, including any errors encountered during fetching or parsing.
+"""
+
+IMAP_HOST = os.getenv("IMAP_HOST")
+IMAP_USER = os.getenv("IMAP_USER")
+IMAP_PASS = os.getenv("IMAP_PASS")
+IMAP_MAILBOX = os.getenv("IMAP_MAILBOX", "INBOX")
 
 logger = logging.getLogger(__name__)
 
+def _decode_mime_value(value: str | None) -> str:
+    """Decodes MIME-encoded header values, handling multiple encoded parts and different character sets."""
+
+    if not value:
+        return ""
+
+    decoded_chunks: list[str] = []
+    for chunk, encoding in decode_header(value):
+        if isinstance(chunk, bytes):
+            decoded_chunks.append(chunk.decode(encoding or "utf-8", errors="ignore"))
+        else:
+            decoded_chunks.append(chunk)
+    return "".join(decoded_chunks).strip()
+
+
+def _parse_address_header(msg: Message, header_name: str) -> list[tuple[str, str]]:
+    """
+    Parses email address headers (e.g., From, To, Cc) and returns a list of tuples containing display names and email addresses.
+    It handles MIME-encoded display names and normalizes email addresses to lowercase.
+    """
+
+    header_value = msg.get(header_name, "")
+    addresses = getaddresses([header_value])
+
+    parsed_addresses: list[tuple[str, str]] = []
+    for display_name, email_address in addresses:
+        normalized_email = email_address.strip().lower()
+        if not normalized_email:
+            continue
+        parsed_addresses.append((_decode_mime_value(display_name), normalized_email))
+
+    return parsed_addresses
+
+
+def _extract_bodies(msg: Message) -> tuple[str, str]:
+    """Extracts the plain text and HTML bodies from an email message, handling multipart structures and character encodings."""
+
+    text_parts: list[str] = []
+    html_parts: list[str] = []
+
+    if not msg.is_multipart():
+        payload = msg.get_payload(decode=True)
+        if payload is None:
+            return "", ""
+
+        charset = msg.get_content_charset() or "utf-8"
+        decoded_payload = payload.decode(charset, errors="ignore")
+        if msg.get_content_type() == "text/html":
+            return "", decoded_payload.strip()
+        return decoded_payload.strip(), ""
+
+    for part in msg.walk():
+        if part.get_content_disposition() == "attachment":
+            continue
+
+        payload = part.get_payload(decode=True)
+        if payload is None:
+            continue
+
+        charset = part.get_content_charset() or "utf-8"
+        decoded_payload = payload.decode(charset, errors="ignore")
+
+        if part.get_content_type() == "text/plain":
+            text_parts.append(decoded_payload)
+        elif part.get_content_type() == "text/html":
+            html_parts.append(decoded_payload)
+
+    return "\n".join(text_parts).strip(), "\n".join(html_parts).strip()
+
+
+def _extract_attachments(msg: Message) -> list[dict[str, object]]:
+    """Extracts attachment information from an email message."""
+
+    attachments: list[dict[str, object]] = []
+
+    for index, part in enumerate(msg.walk()):
+        disposition = part.get_content_disposition()
+        filename = _decode_mime_value(part.get_filename())
+        content_type = part.get_content_type()
+        content_id = part.get("Content-ID")
+
+        is_attachment = disposition == "attachment"
+        is_inline_file = disposition == "inline" and (
+            filename or content_id or not content_type.startswith("text/")
+        )
+        if not is_attachment and not is_inline_file:
+            continue
+
+        payload = part.get_payload(decode=True) or b""
+        attachments.append(
+            {
+                "part_index": index,
+                "content_id": content_id,
+                "filename": filename or None,
+                "filename_normalized": filename.lower() if filename else None,
+                "mime_type": content_type,
+                "disposition": disposition,
+                "is_inline": 1 if disposition == "inline" else 0,
+                "size_bytes": len(payload),
+            }
+        )
+
+    return attachments
+
+
+def _serialize_headers(msg: Message) -> str:
+    """Serializes email headers into a JSON string."""
+
+    headers = [
+        {"name": key, "value": _decode_mime_value(value)} for key, value in msg.items()
+    ]
+    return json.dumps(headers, ensure_ascii=True)
+
+
+def _raw_headers_text(msg: Message) -> str:
+    """Returns the raw header text of an email message."""
+
+    return "".join(f"{key}: {value}\n" for key, value in msg.raw_items())
+
+
+def _parse_internal_date(fetch_response: bytes | str) -> str | None:
+    """Parses the internal date from an IMAP fetch response."""
+
+    response_text = (
+        fetch_response.decode("utf-8", errors="ignore")
+        if isinstance(fetch_response, bytes)
+        else fetch_response
+    )
+    match = re.search(r'INTERNALDATE "([^"]+)"', response_text)
+    if not match:
+        return None
+
+    try:
+        internal_date = parsedate_to_datetime(match.group(1))
+    except (TypeError, ValueError):
+        return None
+
+    return internal_date.astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
+
+
+def _parse_flags(fetch_response: bytes | str) -> list[str]:
+    """Parses the flags from an IMAP fetch response."""
+
+    response_text = (
+        fetch_response.decode("utf-8", errors="ignore")
+        if isinstance(fetch_response, bytes)
+        else fetch_response
+    )
+    match = re.search(r"FLAGS \(([^)]*)\)", response_text)
+    if not match:
+        return []
+
+    flags = [flag.strip() for flag in match.group(1).split() if flag.strip()]
+    return flags
+
+
+def _parse_uid(fetch_response: bytes | str) -> str | None:
+    """Parses the UID from an IMAP fetch response."""
+
+    response_text = (
+        fetch_response.decode("utf-8", errors="ignore")
+        if isinstance(fetch_response, bytes)
+        else fetch_response
+    )
+    match = re.search(r"UID (\d+)", response_text)
+    if not match:
+        return None
+    return match.group(1)
+
 
 def fetch_unseen() -> None:
+    """Connects to the IMAP server, fetches unseen emails from the specified mailbox, and stores their content and metadata in the database."""
+
     if not all([IMAP_HOST, IMAP_USER, IMAP_PASS]):
         logger.warning("IMAP credentials are not fully set. Skipping email fetch.")
         return
 
     mail = imaplib.IMAP4_SSL(str(IMAP_HOST))
-    mail.login(str(IMAP_USER), str(IMAP_PASS))
-    mail.select("inbox")
 
-    status, messages = mail.search(None, "UNSEEN")
+    try:
+        mail.login(str(IMAP_USER), str(IMAP_PASS))
+        mail.select(IMAP_MAILBOX)
 
-    conn = get_conn()
-    c = conn.cursor()
+        status, message_numbers = mail.search(None, "UNSEEN")
+        if status != "OK":
+            logger.error("IMAP search failed with status: %s", status)
+            return
 
-    for num in messages[0].split():
-        _, msg_data = mail.fetch(num, "(RFC822)")
+        with get_conn() as conn:
+            c = conn.cursor()
 
-        if (
-            msg_data is not None
-            and len(msg_data) > 0
-            and isinstance(msg_data[0], tuple)
-            and len(msg_data[0]) > 1
-            and isinstance(msg_data[0][1], bytes)
-        ):
-            msg = email.message_from_bytes(msg_data[0][1])
-
-            content = ""
-            if msg.is_multipart():
-                for part in msg.walk():
-                    if part.get_content_type() == "text/plain":
-                        content = cast(bytes, part.get_payload(decode=True)).decode(
-                            errors="ignore"
-                        )
-            else:
-                content = cast(bytes, msg.get_payload(decode=True)).decode(
-                    errors="ignore"
+            for num in message_numbers[0].split():
+                fetch_status, msg_data = mail.fetch(
+                    num, "(UID RFC822 FLAGS INTERNALDATE)"
                 )
+                if fetch_status != "OK":
+                    logger.warning("Failed to fetch email number %s", num.decode())
+                    continue
 
-            msg_date = msg.get("Date")
-
-            if msg_date is not None:
-                received_on = datetime.strptime(
-                    str(msg.get("Date")), "%a, %d %b %Y %H:%M:%S %z"
-                )
-                external_id = f"{num.decode()}-{msg.get('Message-ID', 'null')}-{received_on.timestamp()}"
-
-                # Check if the email has already been processed
-                c.execute(
-                    "SELECT id FROM messages WHERE external_id = ?", (external_id,)
-                )
-                existing_message = c.fetchone()
-
-                if existing_message:
-                    logger.info(
-                        "Email with external ID %s has already been processed.",
-                        external_id,
+                if (
+                    msg_data is None
+                    or len(msg_data) == 0
+                    or not isinstance(msg_data[0], tuple)
+                    or len(msg_data[0]) < 2
+                    or not isinstance(msg_data[0][1], bytes)
+                ):
+                    logger.warning(
+                        "Unexpected IMAP payload for email number %s", num.decode()
                     )
                     continue
 
-                msg_from = msg.get("From", "")
-                msg_from_decoded = decode_header(msg_from)
-                msg_from = msg_from_decoded[0][0]
-                if isinstance(msg_from, bytes):
-                    msg_from = msg_from.decode(msg_from_decoded[0][1] or "utf-8")
+                response_metadata = msg_data[0][0]
+                raw_rfc822 = msg_data[0][1]
+                msg = BytesParser(policy=default).parsebytes(raw_rfc822)
 
-                msg_to = msg.get("To", "")
-                msg_to_decoded = decode_header(msg_to)
-                msg_to = msg_to_decoded[0][0]
-                if isinstance(msg_to, bytes):
-                    msg_to = msg_to.decode(msg_to_decoded[0][1] or "utf-8")
+                message_id = _decode_mime_value(msg.get("Message-ID")) or None
+                account_id = str(IMAP_USER)
+                mailbox = IMAP_MAILBOX
+                imap_uid = _parse_uid(response_metadata) or num.decode()
 
-                msg_subject = msg.get("Subject", "")
-                msg_subject_decoded = decode_header(msg_subject)
-                msg_subject = msg_subject_decoded[0][0]
-                if isinstance(msg_subject, bytes):
-                    msg_subject = msg_subject.decode(
-                        msg_subject_decoded[0][1] or "utf-8"
+                if message_id:
+                    c.execute(
+                        "SELECT id FROM messages WHERE message_id = ?",
+                        (message_id,),
+                    )
+                else:
+                    c.execute(
+                        """
+                        SELECT id FROM messages
+                        WHERE account_id = ? AND mailbox = ? AND imap_uid = ?
+                        """,
+                        (account_id, mailbox, imap_uid),
                     )
 
-                # Insert the email into the database if it hasn't been processed
+                existing_message = c.fetchone()
+                if existing_message:
+                    logger.info(
+                        "Email already ingested | message_id=%s | imap_uid=%s",
+                        message_id,
+                        imap_uid,
+                    )
+                    continue
+
+                body_text_raw, body_html_raw = _extract_bodies(msg)
+                body_text_clean = body_text_raw.strip()
+                attachments = _extract_attachments(msg)
+                header_json = _serialize_headers(msg)
+                raw_headers = _raw_headers_text(msg)
+
+                try:
+                    message_date = (
+                        parsedate_to_datetime(msg.get("Date"))
+                        if msg.get("Date")
+                        else None
+                    )
+                except (TypeError, ValueError):
+                    message_date = None
+
+                received_on = (
+                    message_date.astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
+                    if message_date is not None
+                    else datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
+                )
+
+                internal_date = _parse_internal_date(response_metadata)
+                flags = _parse_flags(response_metadata)
+                subject = _decode_mime_value(msg.get("Subject"))
+
+                from_addresses = _parse_address_header(msg, "From")
+                from_name, from_email = (
+                    from_addresses[0] if from_addresses else ("", "")
+                )
+                importance = (
+                    _decode_mime_value(msg.get("Importance"))
+                    or _decode_mime_value(msg.get("X-Priority"))
+                    or None
+                )
+
+                thread_key = (
+                    _decode_mime_value(msg.get("Thread-Topic"))
+                    or _decode_mime_value(msg.get("In-Reply-To"))
+                    or message_id
+                    or subject
+                    or f"{account_id}:{mailbox}:{imap_uid}"
+                )
+                external_id = f"{account_id}:{mailbox}:{imap_uid}"
+
                 c.execute(
                     """
-                    INSERT INTO messages (source, received_on, external_id, from_address, to_address, subject, content, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO messages (
+                        source,
+                        account_id,
+                        mailbox,
+                        imap_uid,
+                        external_id,
+                        message_id,
+                        thread_key,
+                        in_reply_to,
+                        references_header,
+                        from_name,
+                        from_email,
+                        subject,
+                        received_on,
+                        message_date,
+                        imap_internal_date,
+                        importance,
+                        flags_json,
+                        has_attachments,
+                        attachment_count,
+                        size_bytes,
+                        body_text_raw,
+                        body_html_raw,
+                        body_text_clean,
+                        headers_json,
+                        status,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         "email",
-                        received_on.astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
+                        account_id,
+                        mailbox,
+                        imap_uid,
                         external_id,
-                        msg_from,
-                        msg_to,
-                        msg_subject,
-                        content,
+                        message_id,
+                        thread_key,
+                        _decode_mime_value(msg.get("In-Reply-To")) or None,
+                        _decode_mime_value(msg.get("References")) or None,
+                        from_name or None,
+                        from_email or None,
+                        subject or None,
+                        received_on,
+                        received_on if message_date is not None else None,
+                        internal_date,
+                        importance,
+                        json.dumps(flags, ensure_ascii=True),
+                        1 if attachments else 0,
+                        len(attachments),
+                        len(raw_rfc822),
+                        body_text_raw or None,
+                        body_html_raw or None,
+                        body_text_clean or None,
+                        header_json,
+                        "pending",
                         datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
                     ),
                 )
+                message_row_id = c.lastrowid
 
-    conn.commit()
-    conn.close()
-    mail.logout()
+                c.execute(
+                    """
+                    INSERT INTO raw_messages (message_row_id, raw_rfc822, raw_headers)
+                    VALUES (?, ?, ?)
+                    """,
+                    (message_row_id, raw_rfc822, raw_headers),
+                )
+
+                address_groups = {
+                    "from": from_addresses,
+                    "sender": _parse_address_header(msg, "Sender"),
+                    "to": _parse_address_header(msg, "To"),
+                    "cc": _parse_address_header(msg, "Cc"),
+                    "bcc": _parse_address_header(msg, "Bcc"),
+                    "reply_to": _parse_address_header(msg, "Reply-To"),
+                }
+                for role, addresses in address_groups.items():
+                    for display_name, email_address in addresses:
+                        c.execute(
+                            """
+                            INSERT INTO message_addresses (
+                                message_row_id,
+                                address_role,
+                                display_name,
+                                email_address
+                            )
+                            VALUES (?, ?, ?, ?)
+                            """,
+                            (message_row_id, role, display_name or None, email_address),
+                        )
+
+                for attachment in attachments:
+                    c.execute(
+                        """
+                        INSERT INTO message_attachments (
+                            message_row_id,
+                            part_index,
+                            content_id,
+                            filename,
+                            filename_normalized,
+                            mime_type,
+                            disposition,
+                            is_inline,
+                            size_bytes,
+                            extraction_method,
+                            extraction_status
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            message_row_id,
+                            attachment["part_index"],
+                            attachment["content_id"],
+                            attachment["filename"],
+                            attachment["filename_normalized"],
+                            attachment["mime_type"],
+                            attachment["disposition"],
+                            attachment["is_inline"],
+                            attachment["size_bytes"],
+                            "none",
+                            "pending",
+                        ),
+                    )
+    finally:
+        mail.logout()
