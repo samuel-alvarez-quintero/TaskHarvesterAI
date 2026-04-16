@@ -3,6 +3,8 @@ import logging
 import os
 
 from dotenv import load_dotenv
+from rich.console import Console
+from rich.table import Table
 
 from app.db.sqlite.database import get_conn, init_db
 from app.imap_client import fetch_unseen
@@ -12,12 +14,16 @@ from app.processor import process
 load_dotenv()
 setup_logging(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
+console = Console()
 
 
 def _print_summary(title: str, summary: dict[str, int]) -> None:
-    print(title)
+    table = Table(title=title)
+    table.add_column("Metric", style="cyan", no_wrap=True)
+    table.add_column("Value", justify="right", style="bold")
     for key, value in summary.items():
-        print(f"  {key}: {value}")
+        table.add_row(key.replace("_", " "), str(value))
+    console.print(table)
 
 
 def list_tasks(status: str | None = None, limit: int | None = None) -> None:
@@ -39,11 +45,26 @@ def list_tasks(status: str | None = None, limit: int | None = None) -> None:
         rows = c.fetchall()
 
     if not rows:
-        print("No tasks found.")
+        console.print("[yellow]No tasks found.[/yellow]")
         return
 
+    table = Table(title="Tasks")
+    table.add_column("ID", justify="right", style="cyan", no_wrap=True)
+    table.add_column("Status", style="green", no_wrap=True)
+    table.add_column("Priority", style="magenta", no_wrap=True)
+    table.add_column("Content", overflow="fold")
+
     for row in rows:
-        print(f"ID: {row[0]}, Content: {row[1]}, Priority: {row[2]}, Status: {row[3]}")
+        task_id, content, priority, task_status = row
+        normalized_content = (content or "").replace("\n", " ").strip()
+        table.add_row(
+            str(task_id),
+            task_status or "",
+            priority or "",
+            normalized_content,
+        )
+
+    console.print(table)
 
 
 def complete_task(task_id: int) -> int:
@@ -81,16 +102,27 @@ def print_status() -> None:
         c.execute("SELECT COUNT(*) FROM task_groups")
         task_group_count = c.fetchone()[0]
 
-    print("Messages:")
+    messages_table = Table(title="Messages")
+    messages_table.add_column("Status", style="cyan", no_wrap=True)
+    messages_table.add_column("Count", justify="right", style="bold")
     for status, count in message_rows:
-        print(f"  {status}: {count}")
+        messages_table.add_row(status, str(count))
 
-    print("Tasks:")
+    tasks_table = Table(title="Tasks")
+    tasks_table.add_column("Status", style="cyan", no_wrap=True)
+    tasks_table.add_column("Count", justify="right", style="bold")
     for status, count in task_rows:
-        print(f"  {status}: {count}")
+        tasks_table.add_row(status, str(count))
 
-    print(f"Clients: {client_count}")
-    print(f"Task groups: {task_group_count}")
+    overview_table = Table(title="Overview")
+    overview_table.add_column("Entity", style="cyan", no_wrap=True)
+    overview_table.add_column("Count", justify="right", style="bold")
+    overview_table.add_row("Clients", str(client_count))
+    overview_table.add_row("Task groups", str(task_group_count))
+
+    console.print(messages_table)
+    console.print(tasks_table)
+    console.print(overview_table)
 
 
 def run_fetch(limit: int | None) -> int:
@@ -198,11 +230,13 @@ def main() -> None:
                         logger.error("Task ID %s was not found.", args.task_id)
                         exit_code = 1
                     else:
-                        print(f"Task {args.task_id} marked as completed.")
+                        console.print(
+                            f"[green]Task {args.task_id} marked as completed.[/green]"
+                        )
                 case _:
                     parser.error("Unknown tasks command")
         case "init-db":
-            print("Database initialized.")
+            console.print("[green]Database initialized.[/green]")
         case _:
             parser.error("Unknown command")
 
