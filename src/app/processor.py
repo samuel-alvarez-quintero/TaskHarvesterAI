@@ -23,7 +23,7 @@ def process() -> None:
 
         try:
             # Extract tasks from the message content using the LLM
-            result = extract_tasks(content, msg_id)
+            result = extract_tasks(msg_id, content, from_address, subject)
 
             if not result:
                 logger.warning("No result returned for message ID: %s", msg_id)
@@ -98,11 +98,12 @@ def process() -> None:
                     # Save task group info
                     c.execute(
                         """
-                        INSERT INTO task_groups (name, name_slug, requested_on, expected_delivery_date, priority, created_at, client_id) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        INSERT INTO task_groups (name, name_slug, status, requested_on, expected_delivery_date, priority, created_at, client_id) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             task_group_info.get("name"),
                             task_group_info.get("name_slug"),
+                            task_group_info.get("status"),
                             task_group_info.get("requested_on"),
                             task_group_info.get("expected_delivery_date"),
                             task_group_info.get("priority"),
