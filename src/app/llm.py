@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.database import session_scope
-from app.llm_clients.OllamaClient import OllamaClient
-from app.llm_clients.OpenAIClient import OpenAIClient
-from app.llm_clients.LLMClientInterface import LLMClientInterface
+from app.llm_clients.ollama_client import OllamaClient
+from app.llm_clients.openai_client import OpenAIClient
+from app.llm_clients.llm_client_interface import LLMClientInterface
 from app.repository import ClientRepository, TaskGroupRepository, TaskRepository
 
 logger = logging.getLogger(__name__)

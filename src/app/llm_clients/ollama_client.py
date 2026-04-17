@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.database import session_scope
 from app.utility import clear_url
-from app.llm_clients.LLMClientInterface import LLMClientInterface
+from app.llm_clients.llm_client_interface import LLMClientInterface
 from app.repository.ai_log_repository import AiLogRepository
 
 OLLAMA_URL = settings.ollama_url
