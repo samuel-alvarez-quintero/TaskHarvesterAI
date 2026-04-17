@@ -51,7 +51,7 @@ def process(
     query = f"""
         SELECT id, body_text_clean, body_text_raw, body_html_raw, from_email, subject, received_on
         FROM messages
-        WHERE {' AND '.join(where_clauses)}
+        WHERE {" AND ".join(where_clauses)}
         ORDER BY received_on DESC
     """
     if limit is not None:

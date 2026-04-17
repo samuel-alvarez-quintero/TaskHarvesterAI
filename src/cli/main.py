@@ -1,6 +1,5 @@
 import argparse
 import logging
-import os
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -128,9 +127,7 @@ def print_status() -> None:
 
 
 def _get_selected_filters(args: argparse.Namespace) -> list[str]:
-    selected_filters = [
-        key for key in FILTER_DEFINITIONS if getattr(args, key, False)
-    ]
+    selected_filters = [key for key in FILTER_DEFINITIONS if getattr(args, key, False)]
     return selected_filters or list(FILTER_DEFINITIONS)
 
 
@@ -189,7 +186,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     fetch_parser = subparsers.add_parser("fetch", help="Fetch unseen emails")
     fetch_parser.add_argument("--limit", type=int, default=None)
-    fetch_parser.add_argument("--filter", action="store_true", help="Run AI filters on newly fetched emails")
+    fetch_parser.add_argument(
+        "--filter", action="store_true", help="Run AI filters on newly fetched emails"
+    )
     for filter_name, filter_info in FILTER_DEFINITIONS.items():
         fetch_parser.add_argument(
             f"--{filter_name}",
@@ -200,9 +199,13 @@ def build_parser() -> argparse.ArgumentParser:
     process_parser = subparsers.add_parser("process", help="Process queued messages")
     process_parser.add_argument("--limit", type=int, default=None)
     process_parser.add_argument("--retry-errors", action="store_true")
-    process_parser.add_argument("--retry-processing-after-minutes", type=int, default=None)
+    process_parser.add_argument(
+        "--retry-processing-after-minutes", type=int, default=None
+    )
 
-    run_parser = subparsers.add_parser("run", help="Fetch and process in one bounded run")
+    run_parser = subparsers.add_parser(
+        "run", help="Fetch and process in one bounded run"
+    )
     run_parser.add_argument("--fetch-limit", type=int, default=None)
     run_parser.add_argument("--process-limit", type=int, default=None)
     run_parser.add_argument("--retry-errors", action="store_true")
@@ -221,10 +224,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     list_parser.add_argument("--limit", type=int, default=None)
 
-    complete_parser = task_subparsers.add_parser("complete", help="Mark a task as completed")
+    complete_parser = task_subparsers.add_parser(
+        "complete", help="Mark a task as completed"
+    )
     complete_parser.add_argument("task_id", type=int)
 
-    filter_parser = subparsers.add_parser("filter", help="Run AI filters on existing messages")
+    filter_parser = subparsers.add_parser(
+        "filter", help="Run AI filters on existing messages"
+    )
     filter_parser.add_argument("--limit", type=int, default=None)
     for filter_name, filter_info in FILTER_DEFINITIONS.items():
         filter_parser.add_argument(

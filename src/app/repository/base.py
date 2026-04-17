@@ -1,16 +1,19 @@
 from __future__ import annotations
-
 from contextlib import AbstractContextManager
-from typing import Generic, TypeVar
-
+from types import TracebackType
+from typing import Any, Generic, Type, TypeVar
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
 
+"""Base repository for handling common database operations."""
+
 ModelType = TypeVar("ModelType")
 
 
-class BaseRepository(Generic[ModelType], AbstractContextManager["BaseRepository[ModelType]"]):
+class BaseRepository(
+    Generic[ModelType], AbstractContextManager["BaseRepository[ModelType]"]
+):
     def __init__(self, session: Session | None = None) -> None:
         self.session = session or SessionLocal()
         self._external_session = session is not None
@@ -18,7 +21,12 @@ class BaseRepository(Generic[ModelType], AbstractContextManager["BaseRepository[
     def __enter__(self) -> "BaseRepository[ModelType]":
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: Type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         if exc_type:
             self.rollback()
         elif not self._external_session:
@@ -32,7 +40,7 @@ class BaseRepository(Generic[ModelType], AbstractContextManager["BaseRepository[
     def get(self, model: type[ModelType], entity_id: int) -> ModelType | None:
         return self.session.get(model, entity_id)
 
-    def list(self, model: type[ModelType], *criteria) -> list[ModelType]:
+    def list(self, model: type[ModelType], *criteria: Any) -> list[ModelType]:
         query = self.session.query(model)
         if criteria:
             query = query.filter(*criteria)

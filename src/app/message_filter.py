@@ -56,7 +56,9 @@ Mensaje:
 """.strip()
 
 
-def _parse_filter_response(response: str, filter_keys: list[str]) -> dict[str, bool] | None:
+def _parse_filter_response(
+    response: str, filter_keys: list[str]
+) -> dict[str, bool] | None:
     if not response:
         return None
 
@@ -104,7 +106,10 @@ def classify_message(
 
     filter_response = _parse_filter_response(result.get("response", ""), filter_keys)
     if filter_response is None:
-        logger.error("No se pudo parsear la respuesta de clasificación para el mensaje %s", msg_id)
+        logger.error(
+            "No se pudo parsear la respuesta de clasificación para el mensaje %s",
+            msg_id,
+        )
         return None
 
     return {
@@ -193,12 +198,16 @@ def filter_messages(
             summary["errors"] += 1
             continue
 
-        classification = classify_message(msg_id, sender or "", subject or "", message_text, selected_filters)
+        classification = classify_message(
+            msg_id, sender or "", subject or "", message_text, selected_filters
+        )
         if classification is None:
             summary["errors"] += 1
             continue
 
-        save_message_filters(msg_id, classification["filters"], classification.get("ai_log_id"))
+        save_message_filters(
+            msg_id, classification["filters"], classification.get("ai_log_id")
+        )
         summary["filtered"] += 1
 
     return summary

@@ -17,7 +17,9 @@ OLLAMA_MODEL = settings.ollama_model
 class OllamaClient(LLMClientInterface):
     _logger = logging.getLogger(__name__)
 
-    def generate(self, prompt: str, msg_id: int, operation: str = "extract_tasks") -> dict[str, Any]:
+    def generate(
+        self, prompt: str, msg_id: int, operation: str = "extract_tasks"
+    ) -> dict[str, Any]:
         base_url = clear_url(OLLAMA_URL)
 
         conn = get_conn()

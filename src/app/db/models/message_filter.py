@@ -31,5 +31,10 @@ class MessageFilter(Base):
     __table_args__ = (
         Index("idx_message_filters_message_row_id", "message_row_id"),
         Index("idx_message_filters_filter_name", "filter_name"),
-        Index("idx_message_filters_message_filter", "message_row_id", "filter_name", unique=True),
+        Index(
+            "idx_message_filters_message_filter",
+            "message_row_id",
+            "filter_name",
+            unique=True,
+        ),
     )
