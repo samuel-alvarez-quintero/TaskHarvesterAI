@@ -1,8 +1,8 @@
 """create initial models
 
-Revision ID: ae553cec1ef5
+Revision ID: a6b308e0ea40
 Revises: 
-Create Date: 2026-04-16 15:53:18.083109
+Create Date: 2026-04-16 23:50:46.467942
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'ae553cec1ef5'
+revision: str = 'a6b308e0ea40'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -140,6 +140,21 @@ def upgrade() -> None:
     op.create_index('idx_message_attachments_content_hash', 'message_attachments', ['content_hash'], unique=False)
     op.create_index('idx_message_attachments_extraction_status', 'message_attachments', ['extraction_status'], unique=False)
     op.create_index('idx_message_attachments_message_row_id', 'message_attachments', ['message_row_id'], unique=False)
+    op.create_table('message_filters',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('message_row_id', sa.Integer(), nullable=False),
+    sa.Column('filter_name', sa.String(), nullable=False),
+    sa.Column('filter_value', sa.Integer(), nullable=False),
+    sa.Column('confidence', sa.Float(), nullable=True),
+    sa.Column('reason', sa.Text(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['message_row_id'], ['messages.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('idx_message_filters_filter_name', 'message_filters', ['filter_name'], unique=False)
+    op.create_index('idx_message_filters_message_filter', 'message_filters', ['message_row_id', 'filter_name'], unique=True)
+    op.create_index('idx_message_filters_message_row_id', 'message_filters', ['message_row_id'], unique=False)
     op.create_table('raw_messages',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('message_row_id', sa.Integer(), nullable=False),
@@ -220,6 +235,10 @@ def downgrade() -> None:
     op.drop_table('task_groups')
     op.drop_index('idx_raw_messages_message_row_id', table_name='raw_messages')
     op.drop_table('raw_messages')
+    op.drop_index('idx_message_filters_message_row_id', table_name='message_filters')
+    op.drop_index('idx_message_filters_message_filter', table_name='message_filters')
+    op.drop_index('idx_message_filters_filter_name', table_name='message_filters')
+    op.drop_table('message_filters')
     op.drop_index('idx_message_attachments_message_row_id', table_name='message_attachments')
     op.drop_index('idx_message_attachments_extraction_status', table_name='message_attachments')
     op.drop_index('idx_message_attachments_content_hash', table_name='message_attachments')

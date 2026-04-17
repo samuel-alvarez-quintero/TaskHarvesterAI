@@ -1,7 +1,8 @@
 from __future__ import annotations
 from contextlib import AbstractContextManager
 from types import TracebackType
-from typing import Any, Generic, Type, TypeVar
+from typing import Any, Generic, Self, Type, TypeVar
+from contextlib import _GeneratorContextManager
 from sqlalchemy.orm import Session
 
 from app.db.database import session_scope
@@ -15,11 +16,16 @@ class BaseRepository(
     Generic[ModelType], AbstractContextManager["BaseRepository[ModelType]"]
 ):
     def __init__(self, session: Session | None = None) -> None:
-        with session_scope() as s:
-            self.session = session or s
-            self._external_session = self.session is not None
+        self._provided_session = session
+        self.session: Session
+        self._session_context: _GeneratorContextManager[Session, None, None] | None = None
 
-    def __enter__(self) -> "BaseRepository[ModelType]":
+    def __enter__(self: Self) -> Self:
+        if self._provided_session:
+            self.session = self._provided_session
+        else:
+            self._session_context = session_scope()
+            self.session = self._session_context.__enter__()
         return self
 
     def __exit__(
@@ -28,11 +34,13 @@ class BaseRepository(
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        if exc_type:
-            self.rollback()
-        elif not self._external_session:
-            self.commit()
-        self.close()
+        if self._provided_session:
+            # If external session, don't commit/close
+            pass
+        else:
+            # Use the context manager to commit/close
+            if self._session_context:
+                self._session_context.__exit__(exc_type, exc_value, traceback)
 
     def add(self, entity: ModelType) -> ModelType:
         self.session.add(entity)
@@ -49,13 +57,3 @@ class BaseRepository(
 
     def delete(self, entity: ModelType) -> None:
         self.session.delete(entity)
-
-    def commit(self) -> None:
-        self.session.commit()
-
-    def rollback(self) -> None:
-        self.session.rollback()
-
-    def close(self) -> None:
-        if not self._external_session:
-            self.session.close()

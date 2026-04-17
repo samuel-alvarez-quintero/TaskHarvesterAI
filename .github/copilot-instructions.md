@@ -12,7 +12,6 @@
 
 ## Build and Test
 - Install dependencies with `poetry install`.
-- Initialize DB with `poetry run taskh init-db`.
 - Fetch unseen emails with `poetry run taskh fetch`.
 - Process queued messages with `poetry run taskh process`.
 - Use the CLI manually:

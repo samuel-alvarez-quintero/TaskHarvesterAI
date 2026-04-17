@@ -3,12 +3,13 @@ import logging
 from typing import Any
 
 import requests
-from datetime import datetime
+from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.sqlite.database import get_conn
+from app.db.database import session_scope
 from app.utility import clear_url
 from app.llm_clients.LLMClientInterface import LLMClientInterface
+from app.repository.ai_log_repository import AiLogRepository
 
 OLLAMA_URL = settings.ollama_url
 OLLAMA_MODEL = settings.ollama_model
@@ -18,109 +19,76 @@ class OllamaClient(LLMClientInterface):
     _logger = logging.getLogger(__name__)
 
     def generate(
-        self, prompt: str, msg_id: int, operation: str = "extract_tasks"
+        self,
+        prompt: str,
+        msg_id: int,
+        operation: str = "extract_tasks",
+        session: Session | None = None,
     ) -> dict[str, Any]:
         base_url = clear_url(OLLAMA_URL)
 
-        conn = get_conn()
-        c = conn.cursor()
+        with session_scope() as s:
+            with AiLogRepository(session or s) as repo:
+                ai_log = repo.create_ai_log(
+                    provider="ollama",
+                    model=OLLAMA_MODEL,
+                    operation=operation,
+                    message_row_id=msg_id,
+                    prompt=prompt,
+                )
+                ai_log_id = ai_log.id
 
-        c.execute(
-            """
-            INSERT INTO ai_log (
-                provider,
-                model,
-                operation,
-                prompt,
-                created_at,
-                message_row_id
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "ollama",
-                OLLAMA_MODEL,
-                operation,
-                prompt,
-                datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
-                msg_id,
-            ),
-        )
-        ai_log_id = c.lastrowid
+            self._logger.info(f"Using Ollama model: {OLLAMA_MODEL}")
 
-        conn.commit()
+            try:
+                r = requests.post(
+                    f"{base_url}/api/generate",
+                    json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
+                    timeout=120,
+                )
+                json_response = r.json()
+            except (requests.RequestException, ValueError) as exc:
+                with AiLogRepository(session or s) as repo:
+                    repo.update_ai_log(
+                        ai_log_id=ai_log_id,
+                        status="failed",
+                        error_message=str(exc),
+                    )
+                return {
+                    "error": str(exc),
+                    "details": None,
+                    "response": "",
+                    "ai_log_id": ai_log_id,
+                }
 
-        self._logger.info(f"Using Ollama model: {OLLAMA_MODEL}")
+            status = "completed" if json_response.get("done") else "failed"
+            response_text = json_response.get("response", "")
 
-        try:
-            r = requests.post(
-                f"{base_url}/api/generate",
-                json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-                timeout=120,
-            )
-            json_response = r.json()
-        except (requests.RequestException, ValueError) as exc:
-            c.execute(
-                """
-                UPDATE ai_log
-                SET status = ?, error_message = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    "failed",
-                    str(exc),
-                    datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
-                    ai_log_id,
-                ),
-            )
-            conn.commit()
-            conn.close()
-            return {
-                "error": str(exc),
-                "details": None,
-                "response": "",
-                "ai_log_id": ai_log_id,
-            }
+            with AiLogRepository(session or s) as repo:
+                repo.update_ai_log(
+                    ai_log_id=ai_log_id,
+                    http_status=str(r.status_code),
+                    status=status,
+                    response=response_text,
+                    response_payload=json.dumps(
+                        json_response, ensure_ascii=True, default=str
+                    ),
+                )
 
-        status = "completed" if json_response.get("done") else "failed"
-        response_text = json_response.get("response", "")
-
-        c.execute(
-            """
-            UPDATE ai_log
-            SET http_status = ?,
-                status = ?,
-                response = ?,
-                response_payload = ?,
-                updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                r.status_code,
-                status,
-                response_text,
-                json.dumps(json_response),
-                datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z"),
-                ai_log_id,
-            ),
-        )
-        conn.commit()
-        conn.close()
-
-        if status == "completed":
-            return {
-                "error": None,
-                "details": json_response,
-                "response": response_text,
-                "ai_log_id": ai_log_id,
-            }
-        else:
-            return {
-                "error": f"API call failed with status: {status}",
-                "details": json_response,
-                "response": "",
-                "ai_log_id": ai_log_id,
-            }
+            if status == "completed":
+                return {
+                    "error": None,
+                    "details": json_response,
+                    "response": response_text,
+                    "ai_log_id": ai_log_id,
+                }
+            else:
+                return {
+                    "error": f"API call failed with status: {status}",
+                    "details": json_response,
+                    "response": "",
+                    "ai_log_id": ai_log_id,
+                }
 
     def get_llm_info(self) -> dict[str, str]:
         return {

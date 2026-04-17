@@ -29,3 +29,33 @@ class MessageFilterRepository(BaseRepository[MessageFilter]):
             reason=reason,
         )
         return self.add(filter_entry)
+
+    def create_or_update_filter(
+        self,
+        message_id: int,
+        filter_name: str,
+        filter_value: bool,
+        confidence: float | None = None,
+        reason: str | None = None,
+    ) -> MessageFilter:
+        existing_filter = (
+            self.session.query(MessageFilter)
+            .filter(
+                MessageFilter.message_row_id == message_id,
+                MessageFilter.filter_name == filter_name,
+            )
+            .first()
+        )
+        if existing_filter:
+            existing_filter.filter_value = 1 if filter_value else 0
+            existing_filter.confidence = confidence
+            existing_filter.reason = reason
+            return existing_filter
+
+        return self.create_message_filter(
+            message_id=message_id,
+            filter_name=filter_name,
+            filter_value=filter_value,
+            confidence=confidence,
+            reason=reason,
+        )

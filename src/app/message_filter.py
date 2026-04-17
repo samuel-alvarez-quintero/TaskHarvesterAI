@@ -1,11 +1,11 @@
 import json
 import logging
 import re
-from datetime import datetime
 from typing import Any
 
-from app.db.sqlite.database import get_conn
+from app.db.database import session_scope
 from app.llm import get_llm
+from app.repository import MessageFilterRepository, MessageRepository
 
 logger = logging.getLogger(__name__)
 
@@ -124,42 +124,17 @@ def save_message_filters(
     filter_values: dict[str, bool],
     ai_log_id: int | None = None,
 ) -> None:
-    now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
-    with get_conn() as conn:
-        c = conn.cursor()
-        for filter_name, filter_value in filter_values.items():
-            if filter_name not in FILTER_DEFINITIONS:
-                continue
+    with session_scope() as session:
+        with MessageFilterRepository(session) as filter_repo:
+            for filter_name, filter_value in filter_values.items():
+                if filter_name not in FILTER_DEFINITIONS:
+                    continue
 
-            c.execute(
-                """
-                INSERT INTO message_filters (
-                    message_row_id,
-                    filter_name,
-                    filter_value,
-                    confidence,
-                    reason,
-                    created_at,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(message_row_id, filter_name) DO UPDATE SET
-                    filter_value = excluded.filter_value,
-                    confidence = excluded.confidence,
-                    reason = excluded.reason,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    message_row_id,
-                    filter_name,
-                    1 if filter_value else 0,
-                    None,
-                    None,
-                    now,
-                    now,
-                ),
-            )
-
-        conn.commit()
+                filter_repo.create_or_update_filter(
+                    message_id=message_row_id,
+                    filter_name=filter_name,
+                    filter_value=filter_value,
+                )
 
 
 def filter_messages(
@@ -174,40 +149,34 @@ def filter_messages(
         "errors": 0,
     }
 
-    rows: list[tuple[int, str, str, str]] = []
-    with get_conn() as conn:
-        c = conn.cursor()
-        query = """
-            SELECT id, COALESCE(from_email, ''), COALESCE(subject, ''),
-                   COALESCE(body_text_clean, body_text_raw, body_html_raw, '')
-            FROM messages
-            WHERE status IN ('pending', 'processing', 'error')
-            ORDER BY received_on DESC
-        """
-        if limit is not None:
-            query += " LIMIT ?"
-            c.execute(query, (limit,))
-        else:
-            c.execute(query)
-        rows = c.fetchall()
+    with session_scope() as session:
+        with MessageRepository(session) as message_repo:
+            messages = message_repo.get_messages_for_filtering(limit=limit)
+            summary["selected"] = len(messages)
 
-    summary["selected"] = len(rows)
+            for message in messages:
+                msg_id = message["id"]
+                sender = message.get("from_email", "")
+                subject = message.get("subject", "")
+                message_text = (
+                    message.get("body_text_clean")
+                    or message.get("body_text_raw")
+                    or message.get("body_html_raw")
+                    or ""
+                )
 
-    for msg_id, sender, subject, message_text in rows:
-        if not message_text.strip():
-            summary["errors"] += 1
-            continue
+                if not message_text.strip():
+                    summary["errors"] += 1
+                    continue
 
-        classification = classify_message(
-            msg_id, sender or "", subject or "", message_text, selected_filters
-        )
-        if classification is None:
-            summary["errors"] += 1
-            continue
+                classification = classify_message(
+                    msg_id, sender, subject, message_text, selected_filters
+                )
+                if classification is None:
+                    summary["errors"] += 1
+                    continue
 
-        save_message_filters(
-            msg_id, classification["filters"], classification.get("ai_log_id")
-        )
-        summary["filtered"] += 1
+                save_message_filters(msg_id, classification["filters"])
+                summary["filtered"] += 1
 
     return summary

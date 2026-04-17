@@ -21,7 +21,7 @@ class MessageRepository(BaseRepository[Message]):
         limit: int | None = None,
         status_filters: list[str] | None = None,
         retry_processing_after_minutes: int | None = None,
-    ) -> list[Message]:
+    ) -> list[dict[str, Any]]:
         if status_filters is None:
             status_filters = ["pending"]
 
@@ -47,7 +47,7 @@ class MessageRepository(BaseRepository[Message]):
         if limit is not None:
             query = query.limit(limit)
 
-        return query.all()
+        return [self._to_dict(message) for message in query.all()]
 
     def update_message_status(
         self,
@@ -67,6 +67,73 @@ class MessageRepository(BaseRepository[Message]):
             if error_count is not None:
                 message.error_count = error_count
             message.updated_at = datetime.now().astimezone()
+
+    def get_message_by_message_id_or_uid(
+        self,
+        message_id: str | None,
+        account_id: str,
+        mailbox: str,
+        imap_uid: str,
+    ) -> Message | None:
+        return self.check_duplicate_message(
+            message_id=message_id,
+            account_id=account_id,
+            mailbox=mailbox,
+            imap_uid=imap_uid,
+        )
+
+    def get_messages_for_filtering(
+        self, limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        query = (
+            self.session.query(Message)
+            .filter(Message.status.in_(["pending", "processing", "error"]))
+            .order_by(Message.received_on.desc())
+        )
+        if limit is not None:
+            query = query.limit(limit)
+        return [self._to_dict(message) for message in query.all()]
+
+    def create_message(self, **kwargs: Any) -> dict[str, Any]:
+        message = Message(**kwargs)
+        created = self.add(message)
+        self.session.flush()
+        return self._to_dict(created)
+
+    def _to_dict(self, message: Message) -> dict[str, Any]:
+        return {
+            "id": message.id,
+            "source": message.source,
+            "account_id": message.account_id,
+            "mailbox": message.mailbox,
+            "external_id": message.external_id,
+            "message_id": message.message_id,
+            "thread_key": message.thread_key,
+            "in_reply_to": message.in_reply_to,
+            "references_header": message.references_header,
+            "from_name": message.from_name,
+            "from_email": message.from_email,
+            "subject": message.subject,
+            "received_on": message.received_on,
+            "message_date": message.message_date,
+            "imap_internal_date": message.imap_internal_date,
+            "importance": message.importance,
+            "flags_json": message.flags_json,
+            "has_attachments": message.has_attachments,
+            "attachment_count": message.attachment_count,
+            "size_bytes": message.size_bytes,
+            "body_text_raw": message.body_text_raw,
+            "body_html_raw": message.body_html_raw,
+            "body_text_clean": message.body_text_clean,
+            "headers_json": message.headers_json,
+            "status": message.status,
+            "processed_at": message.processed_at,
+            "last_attempt_at": message.last_attempt_at,
+            "error_count": message.error_count,
+            "last_error": message.last_error,
+            "created_at": message.created_at,
+            "updated_at": message.updated_at,
+        }
 
     def check_duplicate_message(
         self, message_id: str | None, account_id: str, mailbox: str, imap_uid: str
@@ -98,10 +165,6 @@ class MessageRepository(BaseRepository[Message]):
                 )
                 .first()
             )
-
-    def create_message(self, **kwargs: Any) -> Message:
-        message = Message(**kwargs)
-        return self.add(message)
 
     def get_messages_by_status(self) -> list[tuple[str, int]]:
         from sqlalchemy import func

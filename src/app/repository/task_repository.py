@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
@@ -46,8 +47,26 @@ class TaskRepository(BaseRepository[Task]):
             task.status = "completed"
             task.completed_at = datetime.now().astimezone()
             task.updated_at = datetime.now().astimezone()
+            self.session.flush()
             return True
         return False
+
+    def get_tasks_by_task_group(self, task_group_id: int) -> list[dict[str, Any]]:
+        tasks = (
+            self.session.query(Task).filter(Task.task_group_id == task_group_id).all()
+        )
+        return [self._to_dict(task) for task in tasks]
+
+    def get_task_status_counts(self) -> list[tuple[str, int]]:
+        from sqlalchemy import func
+
+        result = (
+            self.session.query(Task.status, func.count(Task.id))
+            .group_by(Task.status)
+            .order_by(Task.status)
+            .all()
+        )
+        return [(status, count) for status, count in result]
 
     def create_task(
         self,
@@ -61,7 +80,7 @@ class TaskRepository(BaseRepository[Task]):
         ai_log_id: int | None = None,
         extracted_confidence: float | None = None,
         notes: str | None = None,
-    ) -> Task:
+    ) -> dict[str, Any]:
         # Check for existing task
         query = self.session.query(Task).filter(
             and_(
@@ -78,7 +97,7 @@ class TaskRepository(BaseRepository[Task]):
             existing_task.expected_delivery_date = expected_delivery_date
             existing_task.ai_log_id = ai_log_id
             existing_task.updated_at = datetime.now().astimezone()
-            return existing_task
+            return self._to_dict(existing_task)
         else:
             task = Task(
                 content=content,
@@ -92,4 +111,24 @@ class TaskRepository(BaseRepository[Task]):
                 extracted_confidence=extracted_confidence,
                 notes=notes,
             )
-            return self.add(task)
+            created = self.add(task)
+            self.session.flush()
+            return self._to_dict(created)
+
+    def _to_dict(self, task: Task) -> dict[str, Any]:
+        return {
+            "id": task.id,
+            "content": task.content,
+            "status": task.status,
+            "priority": task.priority,
+            "requested_on": task.requested_on,
+            "expected_delivery_date": task.expected_delivery_date,
+            "completed_at": task.completed_at,
+            "task_group_id": task.task_group_id,
+            "source_message_id": task.source_message_id,
+            "ai_log_id": task.ai_log_id,
+            "extracted_confidence": task.extracted_confidence,
+            "notes": task.notes,
+            "created_at": task.created_at,
+            "updated_at": task.updated_at,
+        }

@@ -43,3 +43,31 @@ class MessageAttachmentRepository(BaseRepository[MessageAttachment]):
             extraction_status=extraction_status,
         )
         return self.add(attachment)
+
+    def create_attachment(
+        self,
+        message_id: int,
+        part_index: int | None,
+        content_id: str | None,
+        filename: str | None,
+        filename_normalized: str | None,
+        mime_type: str,
+        disposition: str | None,
+        is_inline: int,
+        size_bytes: int | None,
+        extraction_method: str = "none",
+        extraction_status: str = "pending",
+    ) -> MessageAttachment:
+        return self.create_message_attachment(
+            message_id=message_id,
+            part_index=part_index,
+            content_id=content_id,
+            filename=filename,
+            filename_normalized=filename_normalized,
+            mime_type=mime_type,
+            disposition=disposition,
+            is_inline=is_inline,
+            size_bytes=size_bytes,
+            extraction_method=extraction_method,
+            extraction_status=extraction_status,
+        )

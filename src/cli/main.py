@@ -6,11 +6,15 @@ from rich.console import Console
 from rich.table import Table
 
 from app.config import settings
-from app.db.sqlite.database import get_conn, init_db
+from app.db.database import session_scope
 from app.imap_client import fetch_unseen
 from app.logging_config import setup_logging
 from app.message_filter import FILTER_DEFINITIONS, filter_messages
 from app.processor import process
+from app.repository.client_repository import ClientRepository
+from app.repository.message_repository import MessageRepository
+from app.repository.task_group_repository import TaskGroupRepository
+from app.repository.task_repository import TaskRepository
 
 load_dotenv()
 setup_logging(level=settings.log_level)
@@ -28,102 +32,74 @@ def _print_summary(title: str, summary: dict[str, int]) -> None:
 
 
 def list_tasks(status: str | None = None, limit: int | None = None) -> None:
-    query = "SELECT id, content, priority, status FROM tasks"
-    params: list[object] = []
+    with session_scope() as session:
+        with TaskRepository(session) as repo:
+            tasks = repo.list_tasks(status=status, limit=limit)
 
-    if status and status != "all":
-        query += " WHERE status = ?"
-        params.append(status)
+        if not tasks:
+            console.print("[yellow]No tasks found.[/yellow]")
+            return
 
-    query += " ORDER BY created_at DESC, id DESC"
-    if limit is not None:
-        query += " LIMIT ?"
-        params.append(limit)
+        table = Table(title="Tasks")
+        table.add_column("ID", justify="right", style="cyan", no_wrap=True)
+        table.add_column("Status", style="green", no_wrap=True)
+        table.add_column("Priority", style="magenta", no_wrap=True)
+        table.add_column("Content", overflow="fold")
 
-    with get_conn() as conn:
-        c = conn.cursor()
-        c.execute(query, tuple(params))
-        rows = c.fetchall()
+        for task in tasks:
+            normalized_content = (task.content or "").replace("\n", " ").strip()
+            table.add_row(
+                str(task.id),
+                task.status or "",
+                task.priority or "",
+                normalized_content,
+            )
 
-    if not rows:
-        console.print("[yellow]No tasks found.[/yellow]")
-        return
-
-    table = Table(title="Tasks")
-    table.add_column("ID", justify="right", style="cyan", no_wrap=True)
-    table.add_column("Status", style="green", no_wrap=True)
-    table.add_column("Priority", style="magenta", no_wrap=True)
-    table.add_column("Content", overflow="fold")
-
-    for row in rows:
-        task_id, content, priority, task_status = row
-        normalized_content = (content or "").replace("\n", " ").strip()
-        table.add_row(
-            str(task_id),
-            task_status or "",
-            priority or "",
-            normalized_content,
-        )
-
-    console.print(table)
+        console.print(table)
 
 
 def complete_task(task_id: int) -> int:
-    with get_conn() as conn:
-        c = conn.cursor()
-        c.execute(
-            """
-            UPDATE tasks
-            SET status = 'completed',
-                completed_at = CURRENT_TIMESTAMP,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (task_id,),
-        )
-        conn.commit()
-        return c.rowcount
+    with session_scope() as session:
+        with TaskRepository(session) as repo:
+            success = repo.complete_task(task_id)
+            return 1 if success else 0
 
 
 def print_status() -> None:
-    with get_conn() as conn:
-        c = conn.cursor()
+    with session_scope() as session:
+        with MessageRepository(session) as message_repo:
+            message_rows = message_repo.get_messages_by_status()
 
-        c.execute(
-            "SELECT status, COUNT(*) FROM messages GROUP BY status ORDER BY status"
-        )
-        message_rows = c.fetchall()
+        with TaskRepository(session) as task_repo:
+            task_rows = task_repo.get_task_status_counts()
 
-        c.execute("SELECT status, COUNT(*) FROM tasks GROUP BY status ORDER BY status")
-        task_rows = c.fetchall()
+        with ClientRepository(session) as client_repo:
+            client_count = client_repo.get_client_count()
 
-        c.execute("SELECT COUNT(*) FROM client")
-        client_count = c.fetchone()[0]
+        with TaskGroupRepository(session) as task_group_repo:
+            task_group_count = task_group_repo.get_task_group_count()
 
-        c.execute("SELECT COUNT(*) FROM task_groups")
-        task_group_count = c.fetchone()[0]
+        messages_table = Table(title="Messages")
+        messages_table.add_column("Status", style="cyan", no_wrap=True)
+        messages_table.add_column("Count", justify="right", style="bold")
+        for status, count in message_rows:
+            messages_table.add_row(status, str(count))
 
-    messages_table = Table(title="Messages")
-    messages_table.add_column("Status", style="cyan", no_wrap=True)
-    messages_table.add_column("Count", justify="right", style="bold")
-    for status, count in message_rows:
-        messages_table.add_row(status, str(count))
+        tasks_table = Table(title="Tasks")
+        tasks_table.add_column("Status", style="cyan", no_wrap=True)
+        tasks_table.add_column("Count", justify="right", style="bold")
+        for status, count in task_rows:
+            tasks_table.add_row(status, str(count))
 
-    tasks_table = Table(title="Tasks")
-    tasks_table.add_column("Status", style="cyan", no_wrap=True)
-    tasks_table.add_column("Count", justify="right", style="bold")
-    for status, count in task_rows:
-        tasks_table.add_row(status, str(count))
+        overview_table = Table(title="Overview")
+        overview_table.add_column("Entity", style="cyan", no_wrap=True)
+        overview_table.add_column("Count", justify="right", style="bold")
+        overview_table.add_row("Clients", str(client_count))
+        overview_table.add_row("Task groups", str(task_group_count))
 
-    overview_table = Table(title="Overview")
-    overview_table.add_column("Entity", style="cyan", no_wrap=True)
-    overview_table.add_column("Count", justify="right", style="bold")
-    overview_table.add_row("Clients", str(client_count))
-    overview_table.add_row("Task groups", str(task_group_count))
-
-    console.print(messages_table)
-    console.print(tasks_table)
-    console.print(overview_table)
+        console.print(messages_table)
+        console.print(tasks_table)
+        console.print(overview_table)
 
 
 def _get_selected_filters(args: argparse.Namespace) -> list[str]:
@@ -240,16 +216,12 @@ def build_parser() -> argparse.ArgumentParser:
             help=filter_info["description"],
         )
 
-    subparsers.add_parser("init-db", help="Initialize the database schema")
-
     return parser
 
 
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-
-    init_db()
 
     exit_code = 0
 
@@ -291,8 +263,6 @@ def main() -> None:
                         )
                 case _:
                     parser.error("Unknown tasks command")
-        case "init-db":
-            console.print("[green]Database initialized.[/green]")
         case _:
             parser.error("Unknown command")
 

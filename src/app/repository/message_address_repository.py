@@ -27,3 +27,17 @@ class MessageAddressRepository(BaseRepository[MessageAddress]):
             email_address=email_address,
         )
         return self.add(address)
+
+    def create_address(
+        self,
+        message_id: int,
+        address_role: str,
+        display_name: str | None,
+        email_address: str,
+    ) -> MessageAddress:
+        return self.create_message_address(
+            message_id=message_id,
+            address_role=address_role,
+            display_name=display_name,
+            email_address=email_address,
+        )

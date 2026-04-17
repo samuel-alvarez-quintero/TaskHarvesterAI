@@ -22,7 +22,7 @@ class ClientRepository(BaseRepository[Client]):
         name_slug: str,
         primary_email: str | None = None,
         primary_phone: str | None = None,
-    ) -> Client:
+    ) -> dict[str, Any]:
         client = self.get_client_by_slug(name_slug)
         if client:
             client.name = name
@@ -31,7 +31,7 @@ class ClientRepository(BaseRepository[Client]):
             if primary_phone:
                 client.primary_phone = primary_phone
             client.updated_at = datetime.now().astimezone()
-            return client
+            return self._to_dict(client)
         else:
             client = Client(
                 name=name,
@@ -39,13 +39,23 @@ class ClientRepository(BaseRepository[Client]):
                 primary_email=primary_email,
                 primary_phone=primary_phone,
             )
-            return self.add(client)
+            created = self.add(client)
+            self.session.flush()
+            return self._to_dict(created)
+
+    def get_all_clients(self) -> list[dict[str, Any]]:
+        clients = self.session.query(Client).all()
+        return [self._to_dict(client) for client in clients]
+
+    def get_client_count(self) -> int:
+        return self.session.query(Client).count()
 
     def get_clients_for_context(self) -> list[dict[str, Any]]:
         clients = self.session.query(Client).filter(Client.status == "active").all()
         result: list[dict[str, Any]] = []
         for client in clients:
             client_data: dict[str, Any] = {
+                "id": client.id,
                 "name": client.name,
                 "name_slug": client.name_slug,
                 "status": client.status,
@@ -76,3 +86,16 @@ class ClientRepository(BaseRepository[Client]):
                 }
             result.append(client_data)
         return result
+
+    def _to_dict(self, client: Client) -> dict[str, Any]:
+        return {
+            "id": client.id,
+            "name": client.name,
+            "name_slug": client.name_slug,
+            "status": client.status,
+            "primary_email": client.primary_email,
+            "primary_phone": client.primary_phone,
+            "notes": client.notes,
+            "created_at": client.created_at,
+            "updated_at": client.updated_at,
+        }
