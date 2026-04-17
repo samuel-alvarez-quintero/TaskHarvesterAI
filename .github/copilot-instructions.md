@@ -28,6 +28,7 @@
 - Keep prompts and user-facing extraction behavior in Spanish to match current implementation and project docs.
 - Favor small, incremental changes over broad refactors in core processing files (`src/app/imap_client.py`, `src/app/processor.py`).
 - When handling failures in processing, avoid crashing the whole batch; preserve per-message isolation.
+- Use strict typing for all classes, methods, properties, and functions. Annotate return types, parameters, and instance variables to ensure type safety and pass mypy checks.
 
 ## Documentation
 - For product intent and constraints, see `README.md`.
