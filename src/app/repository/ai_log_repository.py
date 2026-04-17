@@ -1,6 +1,6 @@
 from __future__ import annotations
+from datetime import datetime
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.models import AiLog
@@ -63,7 +63,7 @@ class AiLogRepository(BaseRepository[AiLog]):
                 ai_log.error_message = error_message
             if duration_ms is not None:
                 ai_log.duration_ms = duration_ms
-            ai_log.updated_at = text("CURRENT_TIMESTAMP")
+            ai_log.updated_at = datetime.now().astimezone()
 
     def get_ai_logs_by_message(self, message_id: int) -> list[AiLog]:
         return self.list(AiLog, AiLog.message_row_id == message_id)
