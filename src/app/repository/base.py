@@ -4,7 +4,7 @@ from types import TracebackType
 from typing import Any, Generic, Type, TypeVar
 from sqlalchemy.orm import Session
 
-from app.db.database import SessionLocal
+from app.db.database import session_scope
 
 """Base repository for handling common database operations."""
 
@@ -15,8 +15,9 @@ class BaseRepository(
     Generic[ModelType], AbstractContextManager["BaseRepository[ModelType]"]
 ):
     def __init__(self, session: Session | None = None) -> None:
-        self.session = session or SessionLocal()
-        self._external_session = session is not None
+        with session_scope() as s:
+            self.session = session or s
+            self._external_session = self.session is not None
 
     def __enter__(self) -> "BaseRepository[ModelType]":
         return self
