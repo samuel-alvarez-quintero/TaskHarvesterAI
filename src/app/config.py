@@ -13,11 +13,14 @@ load_dotenv()
 class Settings:
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///data/tasks.db")
     db_path: str = os.getenv("DB_PATH", "data/tasks.db")
+    app_secret_key: str | None = os.getenv("APP_SECRET_KEY")
+    app_env: str = os.getenv("APP_ENV", "development")
 
     imap_host: str | None = os.getenv("IMAP_HOST")
     imap_user: str | None = os.getenv("IMAP_USER")
     imap_pass: str | None = os.getenv("IMAP_PASS")
     imap_mailbox: str = os.getenv("IMAP_MAILBOX", "INBOX")
+    imap_port: int = int(os.getenv("IMAP_PORT", "993"))
 
     llm_provider: str = os.getenv("LLM_PROVIDER", "ollama").lower()
     ollama_url: str = os.getenv("OLLAMA_URL", "http://localhost:11434")

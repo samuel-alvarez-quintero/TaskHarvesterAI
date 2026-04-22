@@ -4,15 +4,10 @@ from typing import Any
 import requests
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.db.database import session_scope
 from app.utility import clear_url
 from app.llm_clients.llm_client_interface import LLMClientInterface
 from app.repository.ai_log_repository import AiLogRepository
-
-OPENAI_URL = settings.openai_url
-OPENAI_MODEL = settings.openai_model
-OPENAI_API_KEY = settings.openai_api_key
 
 
 class OpenAIClient(LLMClientInterface):
@@ -25,33 +20,33 @@ class OpenAIClient(LLMClientInterface):
         operation: str = "extract_tasks",
         session: Session | None = None,
     ) -> dict[str, Any]:
-        base_url = clear_url(OPENAI_URL)
+        base_url = clear_url(self.base_url)
 
-        if not OPENAI_API_KEY:
+        if not self.api_key:
             raise ValueError("OPENAI_API_KEY is not set in the environment variables.")
 
         with session_scope() as s:
             with AiLogRepository(session or s) as repo:
                 ai_log = repo.create_ai_log(
                     provider="openai",
-                    model=OPENAI_MODEL,
+                    model=self.model_name,
                     operation=operation,
                     message_row_id=msg_id,
                     prompt=prompt,
                 )
                 ai_log_id = ai_log.id
 
-            self._logger.info(f"Using OpenAI model: {OPENAI_MODEL}")
+            self._logger.info("Using OpenAI model: %s", self.model_name)
 
             try:
                 r = requests.post(
                     url=f"{base_url}/v1/responses",
                     headers={
                         "Content-Type": "application/json",
-                        "Authorization": f"Bearer {OPENAI_API_KEY}",
+                        "Authorization": f"Bearer {self.api_key}",
                     },
                     json={
-                        "model": OPENAI_MODEL,
+                        "model": self.model_name,
                         "input": [
                             {
                                 "role": "user",
@@ -63,7 +58,7 @@ class OpenAIClient(LLMClientInterface):
                             }
                         ],
                     },
-                    timeout=60,
+                    timeout=self.timeout_seconds,
                 )
 
                 json_response = r.json()
@@ -116,6 +111,6 @@ class OpenAIClient(LLMClientInterface):
     def get_llm_info(self) -> dict[str, str]:
         return {
             "provider": "openai",
-            "url": OPENAI_URL,
-            "model": OPENAI_MODEL,
+            "url": self.base_url,
+            "model": self.model_name,
         }
