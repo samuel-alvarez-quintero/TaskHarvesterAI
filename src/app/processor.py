@@ -70,6 +70,8 @@ def process(
                 body_html_raw = message.get("body_html_raw")
                 from_email = message.get("from_email")
                 subject = message.get("subject")
+                account_id = message.get("account_id")
+                mailbox_name = message.get("mailbox")
 
                 message_text = body_text_clean or body_text_raw or body_html_raw or ""
                 sender = from_email or ""
@@ -96,7 +98,15 @@ def process(
                     )
 
                     # Call the LLM extraction function to get tasks from the message
-                    result = extract_tasks(msg_id, message_text, sender, subject, session=session)
+                    result = extract_tasks(
+                        msg_id,
+                        message_text,
+                        sender,
+                        subject,
+                        account_id=account_id,
+                        mailbox_name=mailbox_name,
+                        session=session,
+                    )
 
                     # If no result is returned, mark the message as error and continue
                     if not result:

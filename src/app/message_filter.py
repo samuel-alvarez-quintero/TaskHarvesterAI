@@ -6,6 +6,7 @@ from typing import Any
 from app.db.database import session_scope
 from app.llm import get_llm
 from app.repository import MessageFilterRepository, MessageRepository
+from app.services import ServiceConfiguration, ServicePromptTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -35,24 +36,36 @@ def _build_filter_prompt(
     subject: str,
     message_text: str,
     filter_keys: list[str],
+    mailbox_id: int | None,
 ) -> str:
     active_definitions = [FILTER_DEFINITIONS[key]["definition"] for key in filter_keys]
     prompt_filters = "\n".join(f"- {definition}" for definition in active_definitions)
     expected_keys = ", ".join(f'"{key}"' for key in filter_keys)
+    sections = ServicePromptTemplate().get_sections(
+        mailbox_id=mailbox_id,
+        operation="classify_message",
+    )
+    context_block = sections.context_template.format(sender=sender, subject=subject)
+    message_block = sections.message_template.format(message_text=message_text)
 
     return f"""
-Responde en español.
-Devuelve únicamente JSON válido y no agregues texto fuera del objeto JSON.
-Analiza el siguiente correo y determina si corresponde a cada uno de estos indicadores:
+Language hint: {sections.language_hint}
+Instructions:
+{sections.instructions}
+
+Analyze the message and classify these indicators:
 {prompt_filters}
 
-La respuesta debe ser un objeto JSON con claves: {expected_keys}.
-Cada valor debe ser true o false.
+JSON object keys required: {expected_keys}
+Each value must be true or false.
 
-Remitente: {sender}
-Asunto: {subject}
-Mensaje:
-{message_text}
+JSON response schema:
+{sections.json_response_schema}
+
+Context:
+{context_block}
+Message:
+{message_block}
 """.strip()
 
 
@@ -90,16 +103,31 @@ def classify_message(
     subject: str,
     message_text: str,
     filter_keys: list[str] | None = None,
+    account_id: str | None = None,
+    mailbox_name: str | None = None,
 ) -> dict[str, Any] | None:
     filter_keys = filter_keys or DEFAULT_FILTER_KEYS
     filter_keys = [key for key in filter_keys if key in FILTER_DEFINITIONS]
     if not filter_keys:
         return None
 
-    prompt = _build_filter_prompt(sender, subject, message_text, filter_keys)
+    llm_runtime = ServiceConfiguration().get_llm_runtime_config(
+        account_id=account_id,
+        mailbox_name=mailbox_name,
+    )
+    prompt = _build_filter_prompt(
+        sender=sender,
+        subject=subject,
+        message_text=message_text,
+        filter_keys=filter_keys,
+        mailbox_id=llm_runtime.mailbox_id,
+    )
 
     try:
-        result = get_llm().generate(prompt, msg_id, operation="classify_message")
+        result = get_llm(
+            account_id=account_id,
+            mailbox_name=mailbox_name,
+        ).generate(prompt, msg_id, operation="classify_message")
     except ValueError as exc:
         logger.error("Error clasificando mensaje %s: %s", msg_id, exc)
         return None
@@ -170,7 +198,13 @@ def filter_messages(
                     continue
 
                 classification = classify_message(
-                    msg_id, sender, subject, message_text, selected_filters
+                    msg_id,
+                    sender,
+                    subject,
+                    message_text,
+                    selected_filters,
+                    message.get("account_id"),
+                    message.get("mailbox"),
                 )
                 if classification is None:
                     summary["errors"] += 1

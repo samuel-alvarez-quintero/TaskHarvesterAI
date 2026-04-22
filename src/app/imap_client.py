@@ -11,7 +11,6 @@ from email.utils import getaddresses, parsedate_to_datetime
 from datetime import datetime
 from typing import cast
 
-from app.config import settings
 from app.db.database import session_scope
 from app.message_filter import (
     DEFAULT_FILTER_KEYS,
@@ -24,6 +23,7 @@ from app.repository import (
     MessageRepository,
     RawMessageRepository,
 )
+from app.services import ServiceConfiguration
 
 """
 This module connects to an IMAP email server, fetches unseen emails from a specified mailbox, and processes each email to extract its content and metadata. 
@@ -31,11 +31,6 @@ The extracted information is then stored in a SQLite database for further analys
 The module handles various email formats, including multipart messages with attachments, and decodes MIME-encoded headers to ensure accurate data extraction.
 It also logs the processing of each email, including any errors encountered during fetching or parsing.
 """
-
-IMAP_HOST = settings.imap_host
-IMAP_USER = settings.imap_user
-IMAP_PASS = settings.imap_pass
-IMAP_MAILBOX = settings.imap_mailbox
 
 logger = logging.getLogger(__name__)
 
@@ -227,15 +222,16 @@ def fetch_unseen(
         "filter_errors": 0,
     }
 
-    if not all([IMAP_HOST, IMAP_USER, IMAP_PASS]):
+    mailbox_cfg = ServiceConfiguration().get_mailbox_runtime_config()
+    if not all([mailbox_cfg.imap_host, mailbox_cfg.imap_username, mailbox_cfg.imap_password]):
         logger.warning("IMAP credentials are not fully set. Skipping email fetch.")
         return summary
 
-    mail = imaplib.IMAP4_SSL(str(IMAP_HOST))
+    mail = imaplib.IMAP4_SSL(mailbox_cfg.imap_host, mailbox_cfg.imap_port)
 
     try:
-        mail.login(str(IMAP_USER), str(IMAP_PASS))
-        mail.select(IMAP_MAILBOX)
+        mail.login(mailbox_cfg.imap_username, mailbox_cfg.imap_password)
+        mail.select(mailbox_cfg.mailbox_name)
 
         status, message_numbers = mail.search(None, "UNSEEN")
         if status != "OK":
@@ -276,8 +272,8 @@ def fetch_unseen(
                     msg = BytesParser(policy=default).parsebytes(raw_rfc822)
 
                     message_id = _decode_mime_value(msg.get("Message-ID")) or None
-                    account_id = str(IMAP_USER)
-                    mailbox = IMAP_MAILBOX
+                    account_id = mailbox_cfg.account_id or mailbox_cfg.imap_username
+                    mailbox = mailbox_cfg.mailbox_name
                     imap_uid = _parse_uid(response_metadata) or num.decode()
 
                     # Check for duplicates
@@ -425,6 +421,8 @@ def fetch_unseen(
                             subject or "",
                             body_text_clean or body_text_raw or body_html_raw or "",
                             selected_filters,
+                            account_id=account_id,
+                            mailbox_name=mailbox,
                         )
                         if classification is None:
                             summary["filter_errors"] += 1

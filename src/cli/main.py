@@ -15,6 +15,7 @@ from app.repository.client_repository import ClientRepository
 from app.repository.message_repository import MessageRepository
 from app.repository.task_group_repository import TaskGroupRepository
 from app.repository.task_repository import TaskRepository
+from app.services import ServiceFirstRunSetup
 
 load_dotenv()
 setup_logging(level=settings.log_level)
@@ -220,6 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    ServiceFirstRunSetup().ensure_setup()
     parser = build_parser()
     args = parser.parse_args()
 

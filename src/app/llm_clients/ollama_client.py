@@ -5,14 +5,10 @@ from typing import Any
 import requests
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.db.database import session_scope
 from app.utility import clear_url
 from app.llm_clients.llm_client_interface import LLMClientInterface
 from app.repository.ai_log_repository import AiLogRepository
-
-OLLAMA_URL = settings.ollama_url
-OLLAMA_MODEL = settings.ollama_model
 
 
 class OllamaClient(LLMClientInterface):
@@ -25,26 +21,26 @@ class OllamaClient(LLMClientInterface):
         operation: str = "extract_tasks",
         session: Session | None = None,
     ) -> dict[str, Any]:
-        base_url = clear_url(OLLAMA_URL)
+        base_url = clear_url(self.base_url)
 
         with session_scope() as s:
             with AiLogRepository(session or s) as repo:
                 ai_log = repo.create_ai_log(
                     provider="ollama",
-                    model=OLLAMA_MODEL,
+                    model=self.model_name,
                     operation=operation,
                     message_row_id=msg_id,
                     prompt=prompt,
                 )
                 ai_log_id = ai_log.id
 
-            self._logger.info(f"Using Ollama model: {OLLAMA_MODEL}")
+            self._logger.info("Using Ollama model: %s", self.model_name)
 
             try:
                 r = requests.post(
                     f"{base_url}/api/generate",
-                    json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-                    timeout=120,
+                    json={"model": self.model_name, "prompt": prompt, "stream": False},
+                    timeout=self.timeout_seconds,
                 )
                 json_response = r.json()
             except (requests.RequestException, ValueError) as exc:
@@ -93,6 +89,6 @@ class OllamaClient(LLMClientInterface):
     def get_llm_info(self) -> dict[str, str]:
         return {
             "provider": "ollama",
-            "url": OLLAMA_URL,
-            "model": OLLAMA_MODEL,
+            "url": self.base_url,
+            "model": self.model_name,
         }
